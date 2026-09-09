@@ -1,0 +1,6 @@
+{
+  "name": "Felgar FC",
+  "description": "Web del equipo de amigos Felgar FC: pachangas entre Azules y Blancos, historial de resultados, goleadores por fechas, estadísticas y galería de fotos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
