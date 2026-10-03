@@ -1,68 +1,77 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Player, Match, PhotoItem, PachangaStats } from '../types';
-import { INITIAL_PLAYERS, INITIAL_MATCHES, INITIAL_PHOTOS } from '../data/initialData';
+import { Player, Match, PhotoItem, PachangaStats, Chronicle } from '../types';
+import { INITIAL_PLAYERS, INITIAL_MATCHES, INITIAL_PHOTOS, INITIAL_SEASONS, INITIAL_CHRONICLES, DEFAULT_PHOTO_CATEGORIES } from '../data/initialData';
+import { db, sanitizeForFirestore, handleFirestoreError, OperationType } from '../firebase';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { calculatePlayerStatsFromMatches, syncPlayersWithMatches } from '../utils/statsUtils';
+import { compressImage } from '../utils/imageCompression';
 
 interface ClubContextType {
-  activeTab: 'inicio' | 'partidos' | 'jugadores' | 'galeria';
-  setActiveTab: (tab: 'inicio' | 'partidos' | 'jugadores' | 'galeria') => void;
+  activeTab: 'inicio' | 'partidos' | 'jugadores' | 'cronicas' | 'galeria';
+  setActiveTab: (tab: 'inicio' | 'partidos' | 'jugadores' | 'cronicas' | 'galeria') => void;
   players: Player[];
   matches: Match[];
   photos: PhotoItem[];
+  chronicles: Chronicle[];
+  selectedChronicleId: string | null;
+  setSelectedChronicleId: (id: string | null) => void;
+  openChronicle: (id: string) => void;
+  seasons: string[];
+  photoCategories: string[];
   stats: PachangaStats;
   isAdmin: boolean;
   loginAdmin: (password: string) => boolean;
   logoutAdmin: () => void;
+  addSeason: (name: string) => void;
+  updateSeason: (oldName: string, newName: string) => void;
+  deleteSeason: (name: string) => void;
+  addPhotoCategory: (name: string) => Promise<string | void>;
+  updatePhotoCategory: (oldName: string, newName: string) => Promise<void>;
+  deletePhotoCategory: (name: string) => Promise<void>;
   addMatch: (newMatch: Omit<Match, 'id'>) => void;
+  updateMatch: (match: Match) => void;
   deleteMatch: (id: string) => void;
   addPlayer: (newPlayer: Omit<Player, 'id'>) => void;
   updatePlayer: (player: Player) => void;
   deletePlayer: (id: string) => void;
+  syncAllPlayerStats: () => Promise<void>;
   addPhoto: (newPhoto: Omit<PhotoItem, 'id' | 'uploadedAt'>) => void;
+  updatePhoto: (photo: PhotoItem) => void;
   deletePhoto: (id: string) => void;
+  addChronicle: (newChronicle: Omit<Chronicle, 'id' | 'createdAt'>) => void;
+  updateChronicle: (chronicle: Chronicle) => void;
+  deleteChronicle: (id: string) => void;
   resetToDefaults: () => void;
 }
-
-const STORAGE_KEYS = {
-  PLAYERS: 'felgar_friends_players_v2',
-  MATCHES: 'felgar_friends_matches_v2',
-  PHOTOS: 'felgar_friends_photos_v2',
-};
 
 const ClubContext = createContext<ClubContextType | undefined>(undefined);
 
 export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeTab, setActiveTab] = useState<'inicio' | 'partidos' | 'jugadores' | 'galeria'>('inicio');
+  const [activeTab, setActiveTab] = useState<'inicio' | 'partidos' | 'jugadores' | 'cronicas' | 'galeria'>('inicio');
+  const [selectedChronicleId, setSelectedChronicleId] = useState<string | null>(null);
 
-  // Load from localStorage or fallback to initial data
-  const [players, setPlayers] = useState<Player[]>(() => {
+  const [rawPlayers, setRawPlayers] = useState<Player[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [seasons, setSeasons] = useState<string[]>([]);
+  const [photoCategories, setPhotoCategories] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.PLAYERS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Error loading players:', e);
-    }
-    return INITIAL_PLAYERS;
+      const localCats = localStorage.getItem('felgar_friends_photo_categories_v2');
+      if (localCats) {
+        const parsed = JSON.parse(localCats);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return DEFAULT_PHOTO_CATEGORIES;
   });
+  const [chronicles, setChronicles] = useState<Chronicle[]>([]);
 
-  const [matches, setMatches] = useState<Match[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.MATCHES);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Error loading matches:', e);
-    }
-    return INITIAL_MATCHES;
-  });
-
-  const [photos, setPhotos] = useState<PhotoItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.PHOTOS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Error loading photos:', e);
-    }
-    return INITIAL_PHOTOS;
-  });
+  // Synchronize player statistics (matchesPlayed, goals, mvps, assists) dynamically with pachangas
+  const players: Player[] = React.useMemo(() => {
+    const basePlayers = rawPlayers.length > 0 ? rawPlayers : INITIAL_PLAYERS;
+    const baseMatches = matches.length > 0 ? matches : INITIAL_MATCHES;
+    return syncPlayersWithMatches(basePlayers, baseMatches);
+  }, [rawPlayers, matches]);
 
   // Admin permission state (protected with password "Chinocablon")
   const [isAdmin, setIsAdmin] = useState<boolean>(() => {
@@ -96,32 +105,310 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Sync to localStorage
+  // Sync from Firestore
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.PLAYERS, JSON.stringify(players));
-    } catch (e) {
-      console.warn('Could not save players to storage', e);
-    }
-  }, [players]);
+    let initialLoadDone = false;
 
+    const unsubPlayers = onSnapshot(
+      collection(db, 'players'),
+      async (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Player));
+        
+        // Auto-migrate from localStorage if Firestore is empty and local has data
+        if (!initialLoadDone && data.length === 0) {
+          try {
+            const localPlayers = localStorage.getItem('felgar_friends_players_v2');
+            if (localPlayers) {
+              const parsed = JSON.parse(localPlayers);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                console.log("Migrando jugadores de localStorage a Firebase...");
+                const batch = writeBatch(db);
+                parsed.forEach((p: Player) => {
+                  batch.set(doc(db, 'players', p.id), sanitizeForFirestore(p));
+                });
+                await batch.commit();
+              } else if (INITIAL_PLAYERS.length > 0) {
+                const batch = writeBatch(db);
+                INITIAL_PLAYERS.forEach((p) => batch.set(doc(db, 'players', p.id), sanitizeForFirestore(p)));
+                await batch.commit();
+              }
+            } else if (INITIAL_PLAYERS.length > 0) {
+              const batch = writeBatch(db);
+              INITIAL_PLAYERS.forEach((p) => batch.set(doc(db, 'players', p.id), sanitizeForFirestore(p)));
+              await batch.commit();
+            }
+          } catch(e) { console.error("Migration error", e); }
+        }
+
+        const MOCK_DEMO_NICKNAMES = [
+          'El Muro', 'San Varela', 'El Capi', 'El Mariscal', 'El Galgo',
+          'La Brújula', 'Magia', 'El Todoterreno', 'El Rifle', 'El Zurdo',
+          'Gabi Gol', 'Pablito'
+        ];
+
+        // Clean out sample demo nicknames if they still exist in Firestore
+        const playersToClean = data.filter(
+          (p) => (p.nickname && MOCK_DEMO_NICKNAMES.includes(p.nickname)) || p.name.includes('"')
+        );
+
+        let finalPlayersData = data;
+        if (playersToClean.length > 0) {
+          finalPlayersData = data.map((p) => {
+            const cleanName = p.name.replace(/"[^"]*"\s*/g, '').replace(/\s+/g, ' ').trim();
+            const shouldRemoveNick = p.nickname && MOCK_DEMO_NICKNAMES.includes(p.nickname);
+            const { nickname, ...rest } = p;
+            return shouldRemoveNick ? { ...rest, name: cleanName } : { ...p, name: cleanName };
+          });
+
+          // Sync cleaned records to Firestore
+          try {
+            const batch = writeBatch(db);
+            playersToClean.forEach((p) => {
+              const cleanName = p.name.replace(/"[^"]*"\s*/g, '').replace(/\s+/g, ' ').trim();
+              const shouldRemoveNick = p.nickname && MOCK_DEMO_NICKNAMES.includes(p.nickname);
+              const { nickname, ...rest } = p;
+              const cleaned = shouldRemoveNick ? { ...rest, name: cleanName } : { ...p, name: cleanName };
+              batch.set(doc(db, 'players', p.id), sanitizeForFirestore(cleaned));
+            });
+            batch.commit().catch(() => {});
+          } catch {}
+        }
+        
+        setRawPlayers(finalPlayersData.length > 0 ? finalPlayersData : INITIAL_PLAYERS);
+        initialLoadDone = true;
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'players');
+      }
+    );
+
+    let matchesLoaded = false;
+    const unsubMatches = onSnapshot(
+      collection(db, 'matches'),
+      async (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Match));
+        
+        if (!matchesLoaded && data.length === 0) {
+          try {
+            const localMatches = localStorage.getItem('felgar_friends_matches_v2');
+            if (localMatches) {
+              const parsed = JSON.parse(localMatches);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                const batch = writeBatch(db);
+                parsed.forEach((m: Match) => batch.set(doc(db, 'matches', m.id), sanitizeForFirestore(m)));
+                await batch.commit();
+              } else if (INITIAL_MATCHES.length > 0) {
+                const batch = writeBatch(db);
+                INITIAL_MATCHES.forEach((m) => batch.set(doc(db, 'matches', m.id), sanitizeForFirestore(m)));
+                await batch.commit();
+              }
+            } else if (INITIAL_MATCHES.length > 0) {
+              const batch = writeBatch(db);
+              INITIAL_MATCHES.forEach((m) => batch.set(doc(db, 'matches', m.id), sanitizeForFirestore(m)));
+              await batch.commit();
+            }
+          } catch(e) {}
+        }
+
+        // Clean match titles containing "de los Lunes" if present in Firestore
+        const matchesToClean = data.filter((m) => m.title && /de los lunes/i.test(m.title));
+        if (matchesToClean.length > 0) {
+          try {
+            const batch = writeBatch(db);
+            matchesToClean.forEach((m) => {
+              const cleanTitle = m.title.replace(/\s*de los Lunes\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+              batch.set(doc(db, 'matches', m.id), sanitizeForFirestore({ ...m, title: cleanTitle }));
+            });
+            batch.commit().catch(() => {});
+          } catch (e) {
+            console.warn("Could not batch update cleaned match titles", e);
+          }
+        }
+
+        const cleanedMatches = data.map((m) => {
+          if (m.title && /de los lunes/i.test(m.title)) {
+            return {
+              ...m,
+              title: m.title.replace(/\s*de los Lunes\s*/gi, ' ').replace(/\s+/g, ' ').trim(),
+            };
+          }
+          return m;
+        });
+
+        cleanedMatches.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setMatches(cleanedMatches.length > 0 ? cleanedMatches : INITIAL_MATCHES);
+        matchesLoaded = true;
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'matches');
+      }
+    );
+
+    let photosLoaded = false;
+    const unsubPhotos = onSnapshot(
+      collection(db, 'photos'),
+      async (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PhotoItem));
+        
+        if (!photosLoaded && data.length === 0) {
+          try {
+            const localPhotos = localStorage.getItem('felgar_friends_photos_v2');
+            if (localPhotos) {
+              const parsed = JSON.parse(localPhotos);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                const batch = writeBatch(db);
+                parsed.forEach((p: PhotoItem) => batch.set(doc(db, 'photos', p.id), sanitizeForFirestore(p)));
+                await batch.commit();
+              } else if (INITIAL_PHOTOS.length > 0) {
+                const batch = writeBatch(db);
+                INITIAL_PHOTOS.forEach((p) => batch.set(doc(db, 'photos', p.id), sanitizeForFirestore(p)));
+                await batch.commit();
+              }
+            } else if (INITIAL_PHOTOS.length > 0) {
+              const batch = writeBatch(db);
+              INITIAL_PHOTOS.forEach((p) => batch.set(doc(db, 'photos', p.id), sanitizeForFirestore(p)));
+              await batch.commit();
+            }
+          } catch(e) {}
+        }
+
+        data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setPhotos(data.length > 0 ? data : (photosLoaded ? [] : INITIAL_PHOTOS));
+        photosLoaded = true;
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'photos');
+      }
+    );
+
+    let chronLoaded = false;
+    const unsubChronicles = onSnapshot(
+      collection(db, 'chronicles'),
+      async (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chronicle));
+        
+        if (!chronLoaded && data.length === 0) {
+          try {
+            const localChron = localStorage.getItem('felgar_friends_chronicles_v2');
+            if (localChron) {
+              const parsed = JSON.parse(localChron);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                const batch = writeBatch(db);
+                parsed.forEach((c: Chronicle) => batch.set(doc(db, 'chronicles', c.id), sanitizeForFirestore(c)));
+                await batch.commit();
+              } else if (INITIAL_CHRONICLES.length > 0) {
+                const batch = writeBatch(db);
+                INITIAL_CHRONICLES.forEach((c) => batch.set(doc(db, 'chronicles', c.id), sanitizeForFirestore(c)));
+                await batch.commit();
+              }
+            } else if (INITIAL_CHRONICLES.length > 0) {
+              const batch = writeBatch(db);
+              INITIAL_CHRONICLES.forEach((c) => batch.set(doc(db, 'chronicles', c.id), sanitizeForFirestore(c)));
+              await batch.commit();
+            }
+          } catch(e) {}
+        }
+
+        data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setChronicles(data.length > 0 ? data : (chronLoaded ? [] : INITIAL_CHRONICLES));
+        chronLoaded = true;
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'chronicles');
+      }
+    );
+
+    let settingsLoaded = false;
+    const unsubSettings = onSnapshot(
+      doc(db, 'settings', 'general'),
+      async (docSnap) => {
+        if (docSnap.exists()) {
+          const sData = docSnap.data();
+          if (sData.seasons && Array.isArray(sData.seasons)) {
+            setSeasons(sData.seasons);
+          }
+          if (sData.photoCategories && Array.isArray(sData.photoCategories) && sData.photoCategories.length > 0) {
+            setPhotoCategories(sData.photoCategories);
+            try {
+              localStorage.setItem('felgar_friends_photo_categories_v2', JSON.stringify(sData.photoCategories));
+            } catch (e) {}
+          } else if (!settingsLoaded) {
+            try {
+              const localCats = localStorage.getItem('felgar_friends_photo_categories_v2');
+              const catsToUse = localCats ? JSON.parse(localCats) : DEFAULT_PHOTO_CATEGORIES;
+              setPhotoCategories(catsToUse);
+              await setDoc(doc(db, 'settings', 'general'), sanitizeForFirestore({ photoCategories: catsToUse }), { merge: true });
+            } catch (e) {}
+          }
+        } else {
+          if (!settingsLoaded) {
+            try {
+              const localS = localStorage.getItem('felgar_friends_seasons_v2');
+              let toSaveSeasons = INITIAL_SEASONS;
+              if (localS) {
+                const parsed = JSON.parse(localS);
+                if (Array.isArray(parsed) && parsed.length > 0) toSaveSeasons = parsed;
+              }
+              const localCats = localStorage.getItem('felgar_friends_photo_categories_v2');
+              const catsToUse = localCats ? JSON.parse(localCats) : DEFAULT_PHOTO_CATEGORIES;
+              await setDoc(doc(db, 'settings', 'general'), sanitizeForFirestore({ seasons: toSaveSeasons, photoCategories: catsToUse }));
+              setPhotoCategories(catsToUse);
+            } catch (e) {}
+          }
+          setSeasons(INITIAL_SEASONS);
+        }
+        settingsLoaded = true;
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'settings/general');
+      }
+    );
+
+    return () => {
+      unsubPlayers();
+      unsubMatches();
+      unsubPhotos();
+      unsubChronicles();
+      unsubSettings();
+    };
+  }, []);
+
+  // Auto-sync player statistics to Firestore whenever matches or rawPlayers change
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.MATCHES, JSON.stringify(matches));
-    } catch (e) {
-      console.warn('Could not save matches to storage', e);
-    }
-  }, [matches]);
+    if (!rawPlayers.length || !matches.length) return;
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.PHOTOS, JSON.stringify(photos));
-    } catch (e) {
-      console.warn('Could not save photos to storage', e);
-    }
-  }, [photos]);
+    const playersNeedingSync = rawPlayers.filter((p) => {
+      const computed = calculatePlayerStatsFromMatches(p, matches);
+      return (
+        p.matchesPlayed !== computed.matchesPlayed ||
+        p.goals !== computed.goals ||
+        (p.mvps || 0) !== computed.mvps ||
+        (p.assists || 0) !== computed.assists
+      );
+    });
 
-  // Derived head-to-head stats (Azules vs Blancos)
+    if (playersNeedingSync.length > 0) {
+      try {
+        const batch = writeBatch(db);
+        playersNeedingSync.forEach((p) => {
+          const computed = calculatePlayerStatsFromMatches(p, matches);
+          const updatedPlayer: Player = {
+            ...p,
+            matchesPlayed: computed.matchesPlayed,
+            goals: computed.goals,
+            assists: computed.assists,
+            mvps: computed.mvps,
+          };
+          batch.set(doc(db, 'players', p.id), sanitizeForFirestore(updatedPlayer));
+        });
+        batch.commit().catch((err) => console.warn('Error committing player stats sync to Firestore:', err));
+      } catch (err) {
+        console.warn('Error in auto-sync player stats:', err);
+      }
+    }
+  }, [rawPlayers, matches]);
+
+  // Derived head-to-head stats
   const stats: PachangaStats = React.useMemo(() => {
     let blueWins = 0;
     let whiteWins = 0;
@@ -152,93 +439,395 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [matches]);
 
   // Actions
-  const addMatch = (newMatchData: Omit<Match, 'id'>) => {
+  const addMatch = async (newMatchData: Omit<Match, 'id'>) => {
     const id = 'm_' + Date.now();
-    const createdMatch: Match = { ...newMatchData, id };
+    let finalImageUrl = newMatchData.imageUrl;
+    if (finalImageUrl && (finalImageUrl.startsWith('data:') || finalImageUrl.length > 500000)) {
+      try {
+        finalImageUrl = await compressImage(finalImageUrl, {
+          maxDimension: 1280,
+          quality: 0.8,
+          maxSizeBytes: 500 * 1024,
+        });
+      } catch (err) {
+        console.warn('Could not compress match image', err);
+      }
+    }
+    const createdMatch: Match = { ...newMatchData, imageUrl: finalImageUrl, id };
 
-    // Update matches (newest first)
-    setMatches((prev) => [createdMatch, ...prev]);
+    try {
+      await setDoc(doc(db, 'matches', id), sanitizeForFirestore(createdMatch));
+    } catch (e) {
+      console.error('Failed to add match', e);
+      handleFirestoreError(e, OperationType.CREATE, `matches/${id}`);
+    }
+  };
 
-    // Update players' goals and matches based on lineups and scorers
-    const allScorers = [...newMatchData.scorersBlue, ...newMatchData.scorersWhite];
-    const lineupPlayerIds = new Set([
-      ...(newMatchData.playersBlue || []),
-      ...(newMatchData.playersWhite || []),
-    ]);
-
-    const hasExplicitLineup =
-      (newMatchData.playersBlue && newMatchData.playersBlue.length > 0) ||
-      (newMatchData.playersWhite && newMatchData.playersWhite.length > 0);
-
-    setPlayers((prevPlayers) => {
-      return prevPlayers.map((player) => {
-        const goalsInMatch = allScorers.filter(
-          (s) =>
-            s.playerId === player.id ||
-            s.playerName.toLowerCase().trim() === player.name.toLowerCase().trim()
-        ).length;
-
-        const isMvp =
-          newMatchData.mvp &&
-          newMatchData.mvp.toLowerCase().trim() === player.name.toLowerCase().trim();
-
-        // Player attended if in lineup or scored a goal
-        const playedThisMatch = hasExplicitLineup
-          ? lineupPlayerIds.has(player.id) || goalsInMatch > 0
-          : goalsInMatch > 0 || isMvp;
-
-        if (playedThisMatch || goalsInMatch > 0 || isMvp) {
-          return {
-            ...player,
-            goals: player.goals + goalsInMatch,
-            matchesPlayed: playedThisMatch ? player.matchesPlayed + 1 : player.matchesPlayed,
-            mvps: isMvp ? player.mvps + 1 : player.mvps,
-          };
-        }
-
-        return player;
+  const syncAllPlayerStats = async () => {
+    const currentMatches = matches.length > 0 ? matches : INITIAL_MATCHES;
+    const currentPlayers = rawPlayers.length > 0 ? rawPlayers : INITIAL_PLAYERS;
+    try {
+      const batch = writeBatch(db);
+      currentPlayers.forEach((p) => {
+        const computed = calculatePlayerStatsFromMatches(p, currentMatches);
+        const updatedPlayer: Player = {
+          ...p,
+          matchesPlayed: computed.matchesPlayed,
+          goals: computed.goals,
+          assists: computed.assists,
+          mvps: computed.mvps,
+        };
+        batch.set(doc(db, 'players', p.id), sanitizeForFirestore(updatedPlayer));
       });
-    });
+      await batch.commit();
+    } catch (e) {
+      console.error('Failed to manually sync all player stats', e);
+    }
   };
 
-  const deleteMatch = (id: string) => {
-    setMatches((prev) => prev.filter((m) => m.id !== id));
+  const updateMatch = async (match: Match) => {
+    let finalImageUrl = match.imageUrl;
+    if (finalImageUrl && (finalImageUrl.startsWith('data:') || finalImageUrl.length > 500000)) {
+      try {
+        finalImageUrl = await compressImage(finalImageUrl, {
+          maxDimension: 1280,
+          quality: 0.8,
+          maxSizeBytes: 500 * 1024,
+        });
+      } catch (err) {
+        console.warn('Could not compress match image', err);
+      }
+    }
+    const updatedMatch: Match = { ...match, imageUrl: finalImageUrl };
+    try {
+      await setDoc(doc(db, 'matches', match.id), sanitizeForFirestore(updatedMatch));
+    } catch (e) {
+      console.error('Failed to update match', e);
+      handleFirestoreError(e, OperationType.UPDATE, `matches/${match.id}`);
+    }
   };
 
-  const addPlayer = (newPlayerData: Omit<Player, 'id'>) => {
+  const deleteMatch = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'matches', id));
+    } catch (e) {
+      console.error('Failed to delete match', e);
+      handleFirestoreError(e, OperationType.DELETE, `matches/${id}`);
+    }
+  };
+
+  const addPlayer = async (newPlayer: Omit<Player, 'id'>) => {
     const id = 'p_' + Date.now();
-    setPlayers((prev) => [...prev, { ...newPlayerData, id }]);
+    let finalPhoto = newPlayer.photoUrl;
+    if (finalPhoto && (finalPhoto.startsWith('data:') || finalPhoto.length > 350000)) {
+      try {
+        finalPhoto = await compressImage(finalPhoto, {
+          maxDimension: 800,
+          quality: 0.82,
+          maxSizeBytes: 350 * 1024,
+        });
+      } catch (err) {
+        console.warn('Could not compress player photo', err);
+      }
+    }
+    try {
+      const sanitized = sanitizeForFirestore({ ...newPlayer, photoUrl: finalPhoto, id });
+      await setDoc(doc(db, 'players', id), sanitized);
+    } catch (e) {
+      console.error('Failed to add player', e);
+      handleFirestoreError(e, OperationType.CREATE, `players/${id}`);
+    }
   };
 
-  const updatePlayer = (updatedPlayer: Player) => {
-    setPlayers((prev) => prev.map((p) => (p.id === updatedPlayer.id ? updatedPlayer : p)));
+  const updatePlayer = async (player: Player) => {
+    let finalPhoto = player.photoUrl;
+    if (finalPhoto && (finalPhoto.startsWith('data:') || finalPhoto.length > 350000)) {
+      try {
+        finalPhoto = await compressImage(finalPhoto, {
+          maxDimension: 800,
+          quality: 0.82,
+          maxSizeBytes: 350 * 1024,
+        });
+      } catch (err) {
+        console.warn('Could not compress player photo', err);
+      }
+    }
+    try {
+      const sanitized = sanitizeForFirestore({ ...player, photoUrl: finalPhoto });
+      await setDoc(doc(db, 'players', player.id), sanitized);
+    } catch (e) {
+      console.error('Failed to update player', e);
+      handleFirestoreError(e, OperationType.UPDATE, `players/${player.id}`);
+    }
   };
 
-  const deletePlayer = (id: string) => {
-    setPlayers((prev) => prev.filter((p) => p.id !== id));
+  const deletePlayer = async (id: string) => {
+    setRawPlayers((prev) => prev.filter((p) => p.id !== id));
+    try {
+      await deleteDoc(doc(db, 'players', id));
+    } catch (e) {
+      console.error('Failed to delete player', e);
+      handleFirestoreError(e, OperationType.DELETE, `players/${id}`);
+    }
   };
 
-  const addPhoto = (newPhotoData: Omit<PhotoItem, 'id' | 'uploadedAt'>) => {
+  const addPhoto = async (newPhoto: Omit<PhotoItem, 'id' | 'uploadedAt'>) => {
     const id = 'ph_' + Date.now();
-    const createdPhoto: PhotoItem = {
-      ...newPhotoData,
+    let finalUrl = newPhoto.url;
+    if (finalUrl && (finalUrl.startsWith('data:') || finalUrl.length > 500000)) {
+      try {
+        finalUrl = await compressImage(finalUrl, {
+          maxDimension: 1400,
+          quality: 0.8,
+          maxSizeBytes: 550 * 1024,
+        });
+      } catch (err) {
+        console.warn('Could not compress photo', err);
+      }
+    }
+    const photo: PhotoItem = {
+      ...newPhoto,
+      url: finalUrl,
       id,
       uploadedAt: new Date().toISOString(),
     };
-    setPhotos((prev) => [createdPhoto, ...prev]);
+    try {
+      await setDoc(doc(db, 'photos', id), sanitizeForFirestore(photo));
+    } catch (e) {
+      console.error('Failed to add photo', e);
+      handleFirestoreError(e, OperationType.CREATE, `photos/${id}`);
+    }
   };
 
-  const deletePhoto = (id: string) => {
+  const updatePhoto = async (photo: PhotoItem) => {
+    let finalUrl = photo.url;
+    if (finalUrl && (finalUrl.startsWith('data:') || finalUrl.length > 500000)) {
+      try {
+        finalUrl = await compressImage(finalUrl, {
+          maxDimension: 1400,
+          quality: 0.8,
+          maxSizeBytes: 550 * 1024,
+        });
+      } catch (err) {
+        console.warn('Could not compress photo', err);
+      }
+    }
+    const updated = { ...photo, url: finalUrl };
+    try {
+      await setDoc(doc(db, 'photos', photo.id), sanitizeForFirestore(updated));
+    } catch (e) {
+      console.error('Failed to update photo', e);
+      handleFirestoreError(e, OperationType.UPDATE, `photos/${photo.id}`);
+    }
+  };
+
+  const deletePhoto = async (id: string) => {
+    // 1. Inmediatamente retiramos la foto del estado local para respuesta instantánea
     setPhotos((prev) => prev.filter((p) => p.id !== id));
+
+    // 2. Limpiamos de la caché de localStorage si estuviese almacenada
+    try {
+      const local = localStorage.getItem('felgar_friends_photos_v2');
+      if (local) {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) {
+          localStorage.setItem(
+            'felgar_friends_photos_v2',
+            JSON.stringify(parsed.filter((p: any) => p.id !== id))
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('Could not update localStorage on photo deletion', e);
+    }
+
+    // 3. Borramos el documento de Firestore
+    try {
+      await deleteDoc(doc(db, 'photos', id));
+    } catch (e) {
+      console.error('Failed to delete photo from Firestore', e);
+      handleFirestoreError(e, OperationType.DELETE, `photos/${id}`);
+    }
   };
 
-  const resetToDefaults = () => {
-    setPlayers(INITIAL_PLAYERS);
-    setMatches(INITIAL_MATCHES);
-    setPhotos(INITIAL_PHOTOS);
-    localStorage.removeItem(STORAGE_KEYS.PLAYERS);
-    localStorage.removeItem(STORAGE_KEYS.MATCHES);
-    localStorage.removeItem(STORAGE_KEYS.PHOTOS);
+  const addChronicle = async (newChronicle: Omit<Chronicle, 'id' | 'createdAt'>) => {
+    const id = 'c_' + Date.now();
+    let finalImageUrl = newChronicle.imageUrl;
+    if (finalImageUrl && (finalImageUrl.startsWith('data:') || finalImageUrl.length > 500000)) {
+      try {
+        finalImageUrl = await compressImage(finalImageUrl, {
+          maxDimension: 1280,
+          quality: 0.8,
+          maxSizeBytes: 500 * 1024,
+        });
+      } catch (err) {
+        console.warn('Could not compress chronicle image', err);
+      }
+    }
+    const chronicle: Chronicle = {
+      ...newChronicle,
+      imageUrl: finalImageUrl,
+      id,
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      await setDoc(doc(db, 'chronicles', id), sanitizeForFirestore(chronicle));
+    } catch (e) {
+      console.error('Failed to add chronicle', e);
+      handleFirestoreError(e, OperationType.CREATE, `chronicles/${id}`);
+    }
+  };
+
+  const updateChronicle = async (chronicle: Chronicle) => {
+    let finalImageUrl = chronicle.imageUrl;
+    if (finalImageUrl && (finalImageUrl.startsWith('data:') || finalImageUrl.length > 500000)) {
+      try {
+        finalImageUrl = await compressImage(finalImageUrl, {
+          maxDimension: 1280,
+          quality: 0.8,
+          maxSizeBytes: 500 * 1024,
+        });
+      } catch (err) {
+        console.warn('Could not compress chronicle image', err);
+      }
+    }
+    const updated = { ...chronicle, imageUrl: finalImageUrl };
+    try {
+      await setDoc(doc(db, 'chronicles', chronicle.id), sanitizeForFirestore(updated));
+    } catch (e) {
+      console.error('Failed to update chronicle', e);
+      handleFirestoreError(e, OperationType.UPDATE, `chronicles/${chronicle.id}`);
+    }
+  };
+
+  const deleteChronicle = async (id: string) => {
+    setChronicles((prev) => prev.filter((c) => c.id !== id));
+    if (selectedChronicleId === id) {
+      setSelectedChronicleId(null);
+    }
+    try {
+      await deleteDoc(doc(db, 'chronicles', id));
+    } catch (e) {
+      console.error('Failed to delete chronicle', e);
+      handleFirestoreError(e, OperationType.DELETE, `chronicles/${id}`);
+    }
+  };
+
+  const openChronicle = (id: string) => {
+    setSelectedChronicleId(id);
+    setActiveTab('cronicas');
+  };
+
+  const addSeason = async (name: string) => {
+    if (seasons.includes(name)) return;
+    const newSeasons = [name, ...seasons];
+    try {
+      await setDoc(doc(db, 'settings', 'general'), sanitizeForFirestore({ seasons: newSeasons }), { merge: true });
+    } catch (e) {
+      console.error('Failed to add season', e);
+      handleFirestoreError(e, OperationType.UPDATE, 'settings/general');
+    }
+  };
+
+  const updateSeason = async (oldName: string, newName: string) => {
+    const newSeasons = seasons.map((s) => (s === oldName ? newName : s));
+    try {
+      await setDoc(doc(db, 'settings', 'general'), sanitizeForFirestore({ seasons: newSeasons }), { merge: true });
+    } catch (e) {
+      console.error('Failed to update season', e);
+      handleFirestoreError(e, OperationType.UPDATE, 'settings/general');
+    }
+  };
+
+  const deleteSeason = async (name: string) => {
+    const newSeasons = seasons.filter((s) => s !== name);
+    try {
+      await setDoc(doc(db, 'settings', 'general'), sanitizeForFirestore({ seasons: newSeasons }), { merge: true });
+    } catch (e) {
+      console.error('Failed to delete season', e);
+      handleFirestoreError(e, OperationType.UPDATE, 'settings/general');
+    }
+  };
+
+  const addPhotoCategory = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (photoCategories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return trimmed;
+
+    const newCategories = [...photoCategories, trimmed];
+    setPhotoCategories(newCategories);
+    try {
+      localStorage.setItem('felgar_friends_photo_categories_v2', JSON.stringify(newCategories));
+      await setDoc(doc(db, 'settings', 'general'), sanitizeForFirestore({ photoCategories: newCategories }), { merge: true });
+    } catch (e) {
+      console.error('Failed to add photo category', e);
+      handleFirestoreError(e, OperationType.UPDATE, 'settings/general');
+    }
+    return trimmed;
+  };
+
+  const updatePhotoCategory = async (oldName: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed || oldName === trimmed) return;
+
+    const newCategories = photoCategories.map((c) => (c === oldName ? trimmed : c));
+    setPhotoCategories(newCategories);
+
+    // Also update photos locally that used old category
+    setPhotos((prev) =>
+      prev.map((p) => (p.category === oldName ? { ...p, category: trimmed } : p))
+    );
+
+    try {
+      localStorage.setItem('felgar_friends_photo_categories_v2', JSON.stringify(newCategories));
+      await setDoc(doc(db, 'settings', 'general'), sanitizeForFirestore({ photoCategories: newCategories }), { merge: true });
+
+      const photosToUpdate = photos.filter((p) => p.category === oldName);
+      if (photosToUpdate.length > 0) {
+        const batch = writeBatch(db);
+        photosToUpdate.forEach((p) => {
+          batch.update(doc(db, 'photos', p.id), { category: trimmed });
+        });
+        await batch.commit();
+      }
+    } catch (e) {
+      console.error('Failed to update photo category', e);
+      handleFirestoreError(e, OperationType.UPDATE, 'settings/general');
+    }
+  };
+
+  const deletePhotoCategory = async (name: string) => {
+    if (photoCategories.length <= 1) return;
+    const newCategories = photoCategories.filter((c) => c !== name);
+    const fallbackCategory = newCategories[0];
+    setPhotoCategories(newCategories);
+
+    // Reassign photos using this category to fallback
+    setPhotos((prev) =>
+      prev.map((p) => (p.category === name ? { ...p, category: fallbackCategory } : p))
+    );
+
+    try {
+      localStorage.setItem('felgar_friends_photo_categories_v2', JSON.stringify(newCategories));
+      await setDoc(doc(db, 'settings', 'general'), sanitizeForFirestore({ photoCategories: newCategories }), { merge: true });
+
+      const photosToUpdate = photos.filter((p) => p.category === name);
+      if (photosToUpdate.length > 0) {
+        const batch = writeBatch(db);
+        photosToUpdate.forEach((p) => {
+          batch.update(doc(db, 'photos', p.id), { category: fallbackCategory });
+        });
+        await batch.commit();
+      }
+    } catch (e) {
+      console.error('Failed to delete photo category', e);
+      handleFirestoreError(e, OperationType.UPDATE, 'settings/general');
+    }
+  };
+
+  const resetToDefaults = async () => {
+    // In Firebase this would require a cloud function or a batch delete, for safety we disable it or just reset local state
+    alert("El reseteo a datos de prueba está deshabilitado en la versión en la nube para no perder datos reales.");
   };
 
   return (
@@ -249,17 +838,35 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
         players,
         matches,
         photos,
+        chronicles,
+        selectedChronicleId,
+        setSelectedChronicleId,
+        openChronicle,
+        seasons,
+        photoCategories,
         stats,
         isAdmin,
         loginAdmin,
         logoutAdmin,
+        addSeason,
+        updateSeason,
+        deleteSeason,
+        addPhotoCategory,
+        updatePhotoCategory,
+        deletePhotoCategory,
         addMatch,
+        updateMatch,
         deleteMatch,
         addPlayer,
         updatePlayer,
         deletePlayer,
+        syncAllPlayerStats,
         addPhoto,
+        updatePhoto,
         deletePhoto,
+        addChronicle,
+        updateChronicle,
+        deleteChronicle,
         resetToDefaults,
       }}
     >
@@ -270,7 +877,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useClub = () => {
   const context = useContext(ClubContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useClub must be used within a ClubProvider');
   }
   return context;

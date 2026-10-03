@@ -27,14 +27,14 @@ export const Crest: React.FC<CrestProps> = ({ className = '', size = 'md', showT
       {showText && (
         <div className="flex flex-col">
           <div className="flex items-center gap-1.5">
-            <span className="font-display font-black tracking-wider text-xl leading-none text-white">
+            <span className="font-display font-black tracking-wider text-xl leading-none text-slate-900">
               FELGAR <span className="text-blue-400">FC</span>
             </span>
-            <span className="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-              AMIGOS
+            <span className="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-700 border border-blue-500/30">
+              CLUB
             </span>
           </div>
-          <span className="text-[11px] font-medium tracking-wider text-slate-400">
+          <span className="text-[11px] font-medium tracking-wider text-slate-500">
             Azules vs Blancos • Pachangas
           </span>
         </div>

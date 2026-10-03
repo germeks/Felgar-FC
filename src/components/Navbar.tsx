@@ -2,10 +2,10 @@ import React, { useState, useRef } from 'react';
 import { Crest } from './Crest';
 import { useClub } from '../context/ClubContext';
 import { AdminUnlockModal } from './AdminUnlockModal';
-import { Calendar, Users, Camera, Home, Menu, X, PlusCircle, RotateCcw, Flame, ShieldCheck, BarChart3 } from 'lucide-react';
+import { Calendar, Users, Camera, Home, Menu, X, PlusCircle, RotateCcw, Flame, ShieldCheck, BarChart3, Newspaper } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { activeTab, setActiveTab, stats, resetToDefaults, isAdmin } = useClub();
+  const { activeTab, setActiveTab, stats, resetToDefaults, isAdmin, chronicles } = useClub();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -31,27 +31,28 @@ export const Navbar: React.FC = () => {
     }, 2500);
   };
 
-  const navItems: { id: 'inicio' | 'partidos' | 'jugadores' | 'galeria'; label: string; fullLabel?: string; icon: React.ReactNode; badge?: string }[] = [
-    { id: 'inicio', label: 'Inicio', fullLabel: 'Inicio Peña', icon: <Home className="w-4 h-4" /> },
+  const navItems: { id: 'inicio' | 'partidos' | 'jugadores' | 'cronicas' | 'galeria'; label: string; fullLabel?: string; icon: React.ReactNode; badge?: string }[] = [
+    { id: 'inicio', label: 'Inicio', fullLabel: 'Inicio', icon: <Home className="w-4 h-4" /> },
     { id: 'partidos', label: 'Pachangas', fullLabel: 'Pachangas', icon: <Calendar className="w-4 h-4" /> },
     { id: 'jugadores', label: 'Estadísticas', fullLabel: 'Estadísticas', icon: <BarChart3 className="w-4 h-4" /> },
+    { id: 'cronicas', label: 'Crónicas', fullLabel: 'Crónicas de Partido', icon: <Newspaper className="w-4 h-4" />, badge: chronicles.length > 0 ? String(chronicles.length) : undefined },
     { id: 'galeria', label: 'Galería', fullLabel: 'Galería de Fotos', icon: <Camera className="w-4 h-4" /> },
   ];
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 shadow-xl">
+    <header className="sticky top-0 z-40 bg-slate-50/90 backdrop-blur-md border-b border-slate-200/80 shadow-xl">
       {/* Top micro bar with club status */}
-      <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-slate-900 text-slate-300 text-xs py-1.5 px-4 border-b border-slate-800/50">
+      <div className="bg-gradient-to-r from-blue-50 via-white to-slate-50 text-slate-500 text-xs py-1.5 px-4 border-b border-slate-200/50">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-            <span className="text-slate-300 font-semibold text-xs">
-              Marcador Histórico: <strong className="text-blue-400">{stats.blueWins} Azules</strong> vs <strong className="text-slate-100">{stats.whiteWins} Blancos</strong> ({stats.draws} empates)
+            <span className="text-slate-500 font-semibold text-xs">
+              Marcador Histórico: <strong className="text-blue-400">{stats.blueWins} Azules</strong> vs <strong className="text-slate-800">{stats.whiteWins} Blancos</strong> ({stats.draws} empates)
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden md:inline text-amber-400 font-semibold flex items-center gap-1">
-              <Flame className="w-3.5 h-3.5" /> {stats.totalMatches} Pachangas Jugadas
+            <span className="hidden md:flex items-center gap-1 text-slate-500 font-semibold whitespace-nowrap">
+              <Flame className="w-3.5 h-3.5 text-red-500" /> {stats.totalMatches} Pachangas Jugadas
             </span>
             {isAdmin && (
               <div className="flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-emerald-300 text-[11px] font-bold">
@@ -59,7 +60,7 @@ export const Navbar: React.FC = () => {
                 <span>Admin Activo</span>
                 <button
                   onClick={() => setShowAdminModal(true)}
-                  className="text-[10px] text-emerald-400 hover:text-white underline cursor-pointer ml-1"
+                  className="text-[10px] text-emerald-400 hover:text-slate-900 underline cursor-pointer ml-1"
                 >
                   (Gestionar)
                 </button>
@@ -87,19 +88,31 @@ export const Navbar: React.FC = () => {
         </div>
       </div>
 
-      {/* Main navigation bar */}
+      {/* Main navigation bar - more compact height */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
-          {/* Logo & Brand with secret 3-click trigger on the Crest */}
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between h-14 sm:h-16 relative">
+          {/* Menu bar custom notch / tab extending downward to cover the crest with rounded shape */}
+          <div
+            className="absolute -left-1.5 sm:-left-2 lg:-left-2.5 w-[68px] sm:w-[88px] lg:w-[100px] top-[calc(100%-2px)] h-[18px] sm:h-[26px] lg:h-[30px] bg-slate-50 border-b border-l border-r border-slate-200/90 rounded-b-2xl shadow-lg pointer-events-none z-30"
+            aria-hidden="true"
+          />
+
+          {/* Logo & Brand with secret 3-click trigger on the Crest - larger and protruding downward */}
+          <div className="flex items-center gap-3 sm:gap-4">
             <div
               onClick={handleSecretLogoClick}
-              className="relative cursor-pointer select-none group/crest"
+              className="relative z-50 cursor-pointer select-none group/crest transition-all duration-200 hover:scale-105 active:scale-95 translate-y-2 sm:translate-y-3.5"
               title={isAdmin ? "Modo Administrador activado (Haz 3 clics para gestionar)" : "Escudo Felgar FC (3 clics para acceso de administrador)"}
             >
-              <Crest size="md" />
+              <div className="w-14 h-14 sm:w-18 sm:h-18 lg:w-20 lg:h-20 flex-shrink-0 drop-shadow-xl filter transition-transform">
+                <img
+                  src="/logo.png"
+                  alt="Felgar FC Escudo"
+                  className="w-full h-full object-contain filter drop-shadow-md"
+                />
+              </div>
               {secretClicks > 0 && secretClicks < 3 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-500 text-[9px] font-black text-white flex items-center justify-center animate-bounce shadow">
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-600 text-[9px] font-black text-white flex items-center justify-center animate-bounce shadow">
                   {secretClicks}
                 </span>
               )}
@@ -108,19 +121,16 @@ export const Navbar: React.FC = () => {
               onClick={() => setActiveTab('inicio')}
               className="flex flex-col cursor-pointer group"
             >
-              <div className="flex items-center gap-2">
-                <span className="font-display font-black text-2xl tracking-wider text-white group-hover:text-blue-400 transition-colors">
-                  FELGAR <span className="text-blue-400">FC</span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-display font-black text-xl sm:text-2xl tracking-wider text-slate-900 group-hover:text-blue-600 transition-colors">
+                  FELGAR <span className="text-blue-600">FC</span>
                 </span>
               </div>
-              <span className="text-[11px] font-medium tracking-wide text-slate-400 hidden sm:block">
-                Azules vs Blancos
-              </span>
             </div>
           </div>
 
           {/* Desktop Navigation Links - Uniform Button Size */}
-          <nav className="hidden md:flex items-center gap-1.5 bg-slate-900/80 p-1.5 rounded-xl border border-slate-800">
+          <nav className="hidden md:flex items-center gap-1 bg-white/90 p-1 rounded-xl border border-slate-200 shadow-2xs">
             {navItems.map((item) => {
               const isActive = activeTab === item.id;
               return (
@@ -128,10 +138,10 @@ export const Navbar: React.FC = () => {
                   key={item.id}
                   id={`nav-${item.id}`}
                   onClick={() => setActiveTab(item.id)}
-                  className={`flex items-center justify-center gap-2 w-44 xl:w-48 h-10 rounded-lg text-sm font-semibold transition-all duration-150 whitespace-nowrap cursor-pointer ${
+                  className={`flex items-center justify-center gap-2 w-36 lg:w-40 xl:w-44 h-9 sm:h-9.5 rounded-lg text-xs lg:text-sm font-semibold transition-all duration-150 whitespace-nowrap cursor-pointer ${
                     isActive
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 font-bold'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                      ? 'bg-blue-600 text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
                   {item.icon}
@@ -140,7 +150,7 @@ export const Navbar: React.FC = () => {
                   {item.badge && (
                     <span
                       className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-blue-500/20 text-blue-300'
+                        isActive ? 'bg-white/20 text-white' : 'bg-blue-500/20 text-blue-700'
                       }`}
                     >
                       {item.badge}
@@ -153,17 +163,17 @@ export const Navbar: React.FC = () => {
 
           {/* Quick Action buttons - Only visible for admin */}
           {isAdmin && (
-            <div className="hidden lg:flex items-center gap-2.5">
+            <div className="hidden lg:flex items-center gap-2">
               <button
                 onClick={() => setActiveTab('partidos')}
-                className="flex items-center justify-center gap-2 w-40 h-10 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 transition-all cursor-pointer"
+                className="flex items-center justify-center gap-1.5 px-3.5 h-9 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all cursor-pointer"
               >
                 <PlusCircle className="w-3.5 h-3.5" />
                 <span>Añadir Pachanga</span>
               </button>
               <button
                 onClick={() => setActiveTab('galeria')}
-                className="flex items-center justify-center gap-2 w-40 h-10 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all cursor-pointer"
+                className="flex items-center justify-center gap-1.5 px-3.5 h-9 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-all cursor-pointer"
               >
                 <Camera className="w-3.5 h-3.5" />
                 <span>Subir Foto</span>
@@ -174,7 +184,7 @@ export const Navbar: React.FC = () => {
           {/* Mobile menu toggle */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-lg bg-slate-900 text-slate-300 hover:text-white border border-slate-800 cursor-pointer"
+            className="md:hidden p-2 rounded-lg bg-white text-slate-500 hover:text-slate-900 border border-slate-200 cursor-pointer"
             aria-label="Abrir menú"
           >
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -184,7 +194,7 @@ export const Navbar: React.FC = () => {
 
       {/* Mobile dropdown menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden bg-slate-900 border-b border-slate-800 px-4 pt-2 pb-5 space-y-1">
+        <div className="md:hidden bg-white border-b border-slate-200 px-4 pt-2 pb-5 space-y-1">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;
             return (
@@ -196,8 +206,8 @@ export const Navbar: React.FC = () => {
                 }}
                 className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-semibold cursor-pointer ${
                   isActive
-                    ? 'bg-blue-600 text-white font-bold'
-                    : 'text-slate-300 hover:bg-slate-800'
+                    ? 'bg-blue-400 text-slate-900 font-bold'
+                    : 'text-slate-500 hover:bg-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -207,7 +217,7 @@ export const Navbar: React.FC = () => {
                 {item.badge && (
                   <span
                     className={`text-xs px-2 py-0.5 rounded-full ${
-                      isActive ? 'bg-white/20 text-white' : 'bg-blue-500/20 text-blue-300'
+                      isActive ? 'bg-white/20 text-slate-900' : 'bg-blue-500/20 text-blue-700'
                     }`}
                   >
                     {item.badge}

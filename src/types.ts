@@ -13,8 +13,14 @@ export interface Player {
   goals: number;
   assists: number;
   mvps: number;
+  wins?: number;
+  losses?: number;
+  draws?: number;
   photoUrl: string;
+  photoPosition?: string; // Posición de enfoque en miniaturas/tarjetas (ej. "50% 15%")
+  photoZoom?: number; // Nivel de zoom de la foto (ej. 1.0 a 2.5)
   joinedDate: string;
+  birthDate?: string; // Fecha de nacimiento (YYYY-MM-DD)
   bio?: string;
   age?: number;
   nationality?: string;
@@ -37,6 +43,7 @@ export interface Match {
   title: string; // e.g. "Pachanga Semanal #24", "Especial Fin de Año"
   date: string; // "YYYY-MM-DD"
   time?: string; // "22:00"
+  season?: string; // e.g. "Temporada 25/26", "Apertura", "Clausura"
   location: string;
   goalsBlue: number;
   goalsWhite: number;
@@ -50,14 +57,7 @@ export interface Match {
   imageUrl?: string;
 }
 
-export type PhotoCategory =
-  | 'Partidos'
-  | 'Celebraciones'
-  | 'Fotos de Grupo'
-  | 'Pifias y Risas'
-  | 'Entrenamientos'
-  | 'Plantilla'
-  | 'Afición';
+export type PhotoCategory = string;
 
 export interface PhotoItem {
   id: string;
@@ -67,6 +67,22 @@ export interface PhotoItem {
   category: PhotoCategory;
   description?: string;
   uploadedAt: string;
+}
+
+export interface Chronicle {
+  id: string;
+  matchId: string; // ID del partido vinculado
+  title: string;
+  subtitle?: string;
+  author: string;
+  date: string; // YYYY-MM-DD
+  content: string; // Texto narrativo completo
+  mvpHighlight?: string; // Comentario destacado del MVP
+  keyMoment?: string; // La jugada clave del partido
+  controversy?: string; // La polémica o anécdota divertida
+  imageUrl?: string; // Foto de portada opcional
+  tags?: string[];
+  createdAt: string;
 }
 
 export interface PachangaStats {

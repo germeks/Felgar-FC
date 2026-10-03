@@ -57,11 +57,11 @@ export const AdminUnlockModal: React.FC<AdminUnlockModalProps> = ({ isOpen, onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 text-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-50/80 backdrop-blur-sm animate-fade-in">
+      <div className="relative w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 text-slate-900">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-lg bg-slate-950/60 text-slate-400 hover:text-white transition-colors cursor-pointer"
+          className="absolute top-4 right-4 p-2 rounded-lg bg-slate-50/60 text-slate-400 hover:text-slate-900 transition-colors cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -75,7 +75,7 @@ export const AdminUnlockModal: React.FC<AdminUnlockModalProps> = ({ isOpen, onCl
             {isAdmin ? <ShieldCheck className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
           </div>
           <div>
-            <h3 className="font-display font-bold text-lg text-white">
+            <h3 className="font-display font-bold text-lg text-slate-900">
               {isAdmin ? 'Modo Administrador Activo' : 'Panel Secreto de Administración'}
             </h3>
             <p className="text-xs text-slate-400">
@@ -107,7 +107,7 @@ export const AdminUnlockModal: React.FC<AdminUnlockModalProps> = ({ isOpen, onCl
               <button
                 type="button"
                 onClick={onClose}
-                className="py-2.5 px-5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer"
+                className="py-2.5 px-5 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors cursor-pointer"
               >
                 Continuar
               </button>
@@ -115,12 +115,12 @@ export const AdminUnlockModal: React.FC<AdminUnlockModalProps> = ({ isOpen, onCl
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <p className="text-xs text-slate-300 leading-relaxed">
+            <p className="text-xs text-slate-600 leading-relaxed">
               Para evitar modificaciones no autorizadas en los goles y resultados, introduce la clave para desbloquear el sistema.
             </p>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-300">
+              <label className="block text-xs font-semibold text-slate-600">
                 Contraseña Secreta
               </label>
               <div className="relative">
@@ -133,14 +133,14 @@ export const AdminUnlockModal: React.FC<AdminUnlockModalProps> = ({ isOpen, onCl
                     if (error) setError(false);
                   }}
                   placeholder="Introduce la clave secreta..."
-                  className={`w-full bg-slate-950 border ${
-                    error ? 'border-rose-500 focus:border-rose-400' : 'border-slate-700 focus:border-blue-500'
-                  } rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none pr-10`}
+                  className={`w-full bg-slate-50 border ${
+                    error ? 'border-rose-500 focus:border-rose-400' : 'border-slate-300 focus:border-blue-500'
+                  } rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none pr-10`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 text-xs cursor-pointer"
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
                 >
                   {showPassword ? 'Ocultar' : 'Ver'}
                 </button>
@@ -163,13 +163,13 @@ export const AdminUnlockModal: React.FC<AdminUnlockModalProps> = ({ isOpen, onCl
               <button
                 type="button"
                 onClick={onClose}
-                className="py-2 px-4 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="py-2 px-4 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-900 transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="py-2.5 px-5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/25 transition-all cursor-pointer flex items-center gap-1.5"
+                className="py-2.5 px-5 rounded-xl text-xs font-bold bg-blue-400 hover:bg-blue-300 text-slate-900 shadow-lg shadow-blue-400/25 transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <Unlock className="w-3.5 h-3.5" />
                 Desbloquear Todo

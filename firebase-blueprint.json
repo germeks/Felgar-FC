@@ -1,0 +1,159 @@
+{
+  "entities": {
+    "Player": {
+      "title": "Player",
+      "description": "A player in the club.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "nickname": { "type": "string", "maxLength": 100 },
+        "number": { "type": "number" },
+        "position": { "type": "string", "enum": ["POR", "DEF", "MED", "DEL"] },
+        "preferredSide": { "type": "string", "enum": ["Azules", "Blancos", "Indiferente"] },
+        "matchesPlayed": { "type": "number" },
+        "goals": { "type": "number" },
+        "assists": { "type": "number" },
+        "mvps": { "type": "number" },
+        "photoUrl": { "type": "string", "maxLength": 2000 },
+        "photoPosition": { "type": "string", "maxLength": 50 },
+        "photoZoom": { "type": "number" },
+        "joinedDate": { "type": "string", "maxLength": 50 },
+        "birthDate": { "type": "string", "maxLength": 50 },
+        "bio": { "type": "string", "maxLength": 500 },
+        "age": { "type": "number" },
+        "nationality": { "type": "string", "maxLength": 100 },
+        "preferredFoot": { "type": "string", "maxLength": 50 },
+        "heightCm": { "type": "number" },
+        "yellowCards": { "type": "number" },
+        "redCards": { "type": "number" }
+      },
+      "required": ["name", "preferredSide", "matchesPlayed", "goals", "photoUrl", "joinedDate"]
+    },
+    "GoalScorer": {
+      "title": "GoalScorer",
+      "description": "Details about a goal scored in a match",
+      "type": "object",
+      "properties": {
+        "playerId": { "type": "string", "maxLength": 100 },
+        "playerName": { "type": "string", "maxLength": 100 },
+        "minute": { "type": "number" },
+        "type": { "type": "string", "enum": ["Normal", "Golazo", "Penalti", "Falta", "Punterazo", "De rebote", "Cabeza", "Propia Puerta"] },
+        "side": { "type": "string", "enum": ["Azules", "Blancos"] }
+      },
+      "required": ["playerName", "side"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "A pachanga match.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 100 },
+        "date": { "type": "string", "maxLength": 50 },
+        "time": { "type": "string", "maxLength": 50 },
+        "season": { "type": "string", "maxLength": 100 },
+        "location": { "type": "string", "maxLength": 200 },
+        "goalsBlue": { "type": "number" },
+        "goalsWhite": { "type": "number" },
+        "scorersBlue": {
+          "type": "array",
+          "items": { "$ref": "#/entities/GoalScorer" }
+        },
+        "scorersWhite": {
+          "type": "array",
+          "items": { "$ref": "#/entities/GoalScorer" }
+        },
+        "playersBlue": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "playersWhite": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "status": { "type": "string", "enum": ["Finalizado"] },
+        "mvp": { "type": "string", "maxLength": 100 },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "imageUrl": { "type": "string", "maxLength": 2000 }
+      },
+      "required": ["title", "date", "location", "goalsBlue", "goalsWhite", "status"]
+    },
+    "PhotoItem": {
+      "title": "PhotoItem",
+      "description": "A gallery photo.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "date": { "type": "string", "maxLength": 50 },
+        "url": { "type": "string", "maxLength": 2000 },
+        "category": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "uploadedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["title", "date", "url", "category", "uploadedAt"]
+    },
+    "Chronicle": {
+      "title": "Chronicle",
+      "description": "A match chronicle/news article.",
+      "type": "object",
+      "properties": {
+        "matchId": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 200 },
+        "subtitle": { "type": "string", "maxLength": 500 },
+        "author": { "type": "string", "maxLength": 100 },
+        "date": { "type": "string", "maxLength": 50 },
+        "content": { "type": "string", "maxLength": 20000 },
+        "mvpHighlight": { "type": "string", "maxLength": 1000 },
+        "keyMoment": { "type": "string", "maxLength": 1000 },
+        "controversy": { "type": "string", "maxLength": 1000 },
+        "imageUrl": { "type": "string", "maxLength": 2000 },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["matchId", "title", "author", "date", "content", "createdAt"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global club settings",
+      "type": "object",
+      "properties": {
+        "seasons": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["seasons"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "An admin user",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "maxLength": 200 }
+      },
+      "required": ["email"]
+    }
+  },
+  "firestore": {
+    "players/{playerId}": {
+      "schema": { "$ref": "#/entities/Player" },
+      "description": "Stores all players in the club."
+    },
+    "matches/{matchId}": {
+      "schema": { "$ref": "#/entities/Match" },
+      "description": "Stores all pachangas/matches."
+    },
+    "photos/{photoId}": {
+      "schema": { "$ref": "#/entities/PhotoItem" },
+      "description": "Stores all gallery photos."
+    },
+    "chronicles/{chronicleId}": {
+      "schema": { "$ref": "#/entities/Chronicle" },
+      "description": "Stores match chronicles."
+    },
+    "settings/{settingId}": {
+      "schema": { "$ref": "#/entities/Settings" },
+      "description": "Global settings like seasons list."
+    },
+    "admins/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Authorized admin users."
+    }
+  }
+}
