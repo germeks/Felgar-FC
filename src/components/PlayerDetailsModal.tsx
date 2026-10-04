@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Player } from '../types';
 import { useClub } from '../context/ClubContext';
 import { X, Calendar, Award, Edit2, Cake, Trophy, CheckCircle2, Shield } from 'lucide-react';
-import { isBirthdayToday, calculateAge, formatBirthDate } from '../utils/birthdayUtils';
+import { isBirthdayToday, formatBirthDate, getPlayerDisplayAge } from '../utils/birthdayUtils';
 import { getPlayerPhotoStyle } from '../utils/photoUtils';
 
 interface PlayerDetailsModalProps {
@@ -18,7 +18,7 @@ export const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({ player, 
   if (!player) return null;
 
   const isBirthday = isBirthdayToday(player.birthDate);
-  const displayAge = player.birthDate ? calculateAge(player.birthDate) : player.age;
+  const displayAge = getPlayerDisplayAge(player);
 
   // Find all goals and matches where this player scored in the pachangas history
   const playerGoalsHistory: {
@@ -192,9 +192,13 @@ export const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({ player, 
                 }`}>
                   Equipo {player.preferredSide || 'Azules'}
                 </span>
-                {displayAge && (
+                {displayAge ? (
                   <span className="text-xs text-slate-600 font-semibold">
                     {displayAge} años
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-500 font-semibold">
+                    -
                   </span>
                 )}
                 {isBirthday && (
@@ -287,14 +291,14 @@ export const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({ player, 
                     {formatBirthDate(player.birthDate, true)}
                   </>
                 ) : (
-                  'No registrada'
+                  '-'
                 )}
               </span>
             </div>
             <div>
               <span className="text-slate-400 block mb-0.5">Edad:</span>
               <span className="font-semibold text-slate-800">
-                {displayAge ? `${displayAge} años` : 'No registrada'}
+                {displayAge ? `${displayAge} años` : '-'}
               </span>
             </div>
             <div>

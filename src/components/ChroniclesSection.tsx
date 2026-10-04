@@ -666,11 +666,6 @@ export const ChroniclesSection: React.FC = () => {
                                       </span>
                                     </div>
                                   ))}
-                                  {linkedMatch.goalsBlue > linkedMatch.scorersBlue.length && (
-                                    <div className="text-[10px] text-blue-400/80 italic">
-                                      +{linkedMatch.goalsBlue - linkedMatch.scorersBlue.length} sin asignar
-                                    </div>
-                                  )}
                                 </div>
                               ) : (
                                 <span className="text-slate-500 italic text-[10px]">Sin goleadores registrados</span>
@@ -694,11 +689,6 @@ export const ChroniclesSection: React.FC = () => {
                                       </span>
                                     </div>
                                   ))}
-                                  {linkedMatch.goalsWhite > linkedMatch.scorersWhite.length && (
-                                    <div className="text-[10px] text-slate-400/80 italic">
-                                      +{linkedMatch.goalsWhite - linkedMatch.scorersWhite.length} sin asignar
-                                    </div>
-                                  )}
                                 </div>
                               ) : (
                                 <span className="text-slate-500 italic text-[10px]">Sin goleadores registrados</span>

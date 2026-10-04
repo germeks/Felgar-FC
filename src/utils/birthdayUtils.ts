@@ -20,6 +20,25 @@ export const calculateAge = (birthDate: string): number => {
   return Math.max(0, age);
 };
 
+/**
+ * Returns player's age based on their birthDate or explicit age.
+ * If the player has no birthDate and their age was the standard 25 or 26 (or 0/undefined),
+ * returns null so a dash '-' is displayed instead of a false default.
+ */
+export const getPlayerDisplayAge = (player?: { birthDate?: string; age?: number } | null): number | null => {
+  if (!player) return null;
+  const hasBirthDate = Boolean(player.birthDate && player.birthDate.trim());
+  if (hasBirthDate) {
+    const calc = calculateAge(player.birthDate!);
+    if (calc > 0) return calc;
+  }
+  // If there is no birth date (or invalid date), eliminate standard 25 or 26 default ages
+  if (!player.age || player.age === 25 || player.age === 26 || player.age <= 0) {
+    return null;
+  }
+  return player.age;
+};
+
 export const isBirthdayToday = (birthDate?: string): boolean => {
   if (!birthDate) return false;
   const parts = birthDate.split('-');

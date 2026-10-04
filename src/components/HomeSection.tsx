@@ -515,7 +515,7 @@ export const HomeSection: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-slate-200/80 text-xs">
                   <div>
                     <span className="font-bold text-blue-600 block mb-1">
-                      Goles Azules {lastMatch.goalsBlue !== lastMatch.scorersBlue.length ? `(${lastMatch.scorersBlue.length} de ${lastMatch.goalsBlue})` : `(${lastMatch.goalsBlue})`}:
+                      Goles Azules:
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {groupScorers(lastMatch.scorersBlue, players).map((scorer) => (
@@ -523,16 +523,11 @@ export const HomeSection: React.FC = () => {
                           {'⚽'.repeat(scorer.count)} {scorer.name}
                         </span>
                       ))}
-                      {lastMatch.goalsBlue > lastMatch.scorersBlue.length && (
-                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[11px] border border-blue-200 border-dashed">
-                          ⚽ +{lastMatch.goalsBlue - lastMatch.scorersBlue.length} sin asignar
-                        </span>
-                      )}
                     </div>
                   </div>
                   <div>
                     <span className="font-bold text-slate-600 block mb-1">
-                      Goles Blancos {lastMatch.goalsWhite !== lastMatch.scorersWhite.length ? `(${lastMatch.scorersWhite.length} de ${lastMatch.goalsWhite})` : `(${lastMatch.goalsWhite})`}:
+                      Goles Blancos:
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {groupScorers(lastMatch.scorersWhite, players).map((scorer) => (
@@ -540,11 +535,6 @@ export const HomeSection: React.FC = () => {
                           {'⚽'.repeat(scorer.count)} {scorer.name}
                         </span>
                       ))}
-                      {lastMatch.goalsWhite > lastMatch.scorersWhite.length && (
-                        <span className="px-2 py-0.5 rounded bg-slate-50 text-slate-600 text-[11px] border border-slate-200 border-dashed">
-                          ⚽ +{lastMatch.goalsWhite - lastMatch.scorersWhite.length} sin asignar
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>

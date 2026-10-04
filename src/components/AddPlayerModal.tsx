@@ -41,7 +41,7 @@ export const AddPlayerModal: React.FC<AddPlayerModalProps> = ({ isOpen, onClose,
   const [birthDateInput, setBirthDateInput] = useState(''); // Text input: DD/MM/AAAA
   const [dateInputMode, setDateInputMode] = useState<'keyboard' | 'calendar'>('keyboard');
   const [dateValidationError, setDateValidationError] = useState<string | null>(null);
-  const [age, setAge] = useState<number>(26);
+  const [age, setAge] = useState<number | ''>('');
   const [isAgeManual, setIsAgeManual] = useState(false);
   const [photoUrl, setPhotoUrl] = useState(PRESET_PHOTOS[0]);
   const [photoPosition, setPhotoPosition] = useState<string>('50% 20%');
@@ -61,11 +61,18 @@ export const AddPlayerModal: React.FC<AddPlayerModalProps> = ({ isOpen, onClose,
       setBirthDateInput(isoToDisplayDate(pBirth));
       setDateValidationError(null);
       if (pBirth) {
-        setAge(calculateAge(pBirth));
+        const calc = calculateAge(pBirth);
+        setAge(calc > 0 ? calc : '');
         setIsAgeManual(false);
       } else {
-        setAge(playerToEdit.age ?? 26);
-        setIsAgeManual(false);
+        // Eliminar edad estándar 25 o 26 para jugadores sin fecha de nacimiento
+        if (playerToEdit.age === 25 || playerToEdit.age === 26 || !playerToEdit.age) {
+          setAge('');
+          setIsAgeManual(false);
+        } else {
+          setAge(playerToEdit.age);
+          setIsAgeManual(true);
+        }
       }
       setPhotoUrl(playerToEdit.photoUrl);
       setPhotoPosition(playerToEdit.photoPosition || '50% 20%');
@@ -80,7 +87,7 @@ export const AddPlayerModal: React.FC<AddPlayerModalProps> = ({ isOpen, onClose,
       setBirthDate('');
       setBirthDateInput('');
       setDateValidationError(null);
-      setAge(26);
+      setAge(''); // Sin edad por defecto para personas sin fecha de nacimiento
       setIsAgeManual(false);
       setPhotoUrl(PRESET_PHOTOS[Math.floor(Math.random() * PRESET_PHOTOS.length)]);
       setPhotoPosition('50% 20%');
@@ -197,9 +204,17 @@ export const AddPlayerModal: React.FC<AddPlayerModalProps> = ({ isOpen, onClose,
       }
     }
 
-    const calculatedAge = finalBirthDate ? calculateAge(finalBirthDate) : Number(age);
-    const parsedAge = isAgeManual ? Number(age) : (calculatedAge || Number(age));
-    const finalAge = parsedAge && !isNaN(parsedAge) && parsedAge > 0 ? parsedAge : undefined;
+    let finalAge: number | undefined = undefined;
+    if (finalBirthDate) {
+      const calc = calculateAge(finalBirthDate);
+      finalAge = calc > 0 ? calc : undefined;
+    } else if (isAgeManual && age !== '') {
+      const num = Number(age);
+      // Eliminar edad estándar 25 o 26 para jugadores sin fecha de nacimiento
+      if (!isNaN(num) && num > 0 && num !== 25 && num !== 26) {
+        finalAge = num;
+      }
+    }
     const cleanBirthDate = finalBirthDate ? finalBirthDate : undefined;
     const cleanNationality = nationality && nationality.trim() ? nationality.trim() : undefined;
     const cleanNickname = nickname && nickname.trim()
@@ -419,11 +434,13 @@ export const AddPlayerModal: React.FC<AddPlayerModalProps> = ({ isOpen, onClose,
                     min="10"
                     max="80"
                     value={age}
+                    placeholder="-"
                     onChange={(e) => {
-                      setAge(parseInt(e.target.value) || 0);
+                      const val = e.target.value.trim();
+                      setAge(val === '' ? '' : parseInt(val) || '');
                       setIsAgeManual(true);
                     }}
-                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-500 text-center font-bold"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-500 text-center font-bold placeholder:text-slate-400 placeholder:font-normal"
                   />
                   <span className="text-xs font-bold text-slate-600">años</span>
                 </div>

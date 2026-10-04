@@ -20,7 +20,7 @@ import {
   ArrowDown,
   RotateCcw
 } from 'lucide-react';
-import { isBirthdayToday, calculateAge, formatBirthDate } from '../utils/birthdayUtils';
+import { isBirthdayToday, calculateAge, formatBirthDate, getPlayerDisplayAge } from '../utils/birthdayUtils';
 import { getPlayerPhotoStyle } from '../utils/photoUtils';
 
 type SortField = 'name' | 'preferredSide' | 'age' | 'matchesPlayed' | 'bagaje' | 'goals' | 'average';
@@ -102,8 +102,8 @@ export const PlayersSection: React.FC = () => {
     } else if (sortField === 'preferredSide') {
       result = (a.preferredSide || '').localeCompare(b.preferredSide || '', 'es');
     } else if (sortField === 'age') {
-      const ageA = a.birthDate ? calculateAge(a.birthDate) : (a.age ?? 0);
-      const ageB = b.birthDate ? calculateAge(b.birthDate) : (b.age ?? 0);
+      const ageA = getPlayerDisplayAge(a) ?? 0;
+      const ageB = getPlayerDisplayAge(b) ?? 0;
       result = ageA - ageB;
     } else if (sortField === 'matchesPlayed') {
       result = (a.matchesPlayed || 0) - (b.matchesPlayed || 0);
@@ -441,7 +441,7 @@ export const PlayersSection: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {sortedPlayers.map((player) => {
             const isBirthday = isBirthdayToday(player.birthDate);
-            const displayAge = player.birthDate ? calculateAge(player.birthDate) : player.age;
+            const displayAge = getPlayerDisplayAge(player);
 
             return (
               <div
@@ -518,9 +518,9 @@ export const PlayersSection: React.FC = () => {
                         {isBirthday && <span title="¡Hoy es su cumpleaños!">🎉</span>}
                       </div>
                       <span className="text-[11px] font-semibold text-slate-500 block truncate">
-                        {displayAge ? `${displayAge} años` : ''}
+                        {displayAge ? `${displayAge} años` : '-'}
                         {player.birthDate ? ` (${formatBirthDate(player.birthDate, false)})` : ''}
-                        {displayAge || player.birthDate ? ' • ' : ''}
+                        {' • '}
                         Equipo {player.preferredSide || 'Azules'}
                       </span>
                     </div>
@@ -637,7 +637,7 @@ export const PlayersSection: React.FC = () => {
                 <tbody className="divide-y divide-slate-200/80">
                   {sortedPlayers.map((player, idx) => {
                     const isBirthday = isBirthdayToday(player.birthDate);
-                    const displayAge = player.birthDate ? calculateAge(player.birthDate) : player.age;
+                    const displayAge = getPlayerDisplayAge(player);
 
                     return (
                       <tr
@@ -679,7 +679,7 @@ export const PlayersSection: React.FC = () => {
                                 )}
                               </div>
                               <span className="text-[11px] text-slate-500 block">
-                                {player.birthDate ? formatBirthDate(player.birthDate, false) : 'Sin fecha'}
+                                {player.birthDate ? formatBirthDate(player.birthDate, false) : '-'}
                               </span>
                             </div>
                           </div>
@@ -700,7 +700,7 @@ export const PlayersSection: React.FC = () => {
 
                         {/* Edad */}
                         <td className="py-3 px-4 text-center font-medium text-slate-700">
-                          {displayAge ? `${displayAge} años` : '—'}
+                          {displayAge ? `${displayAge} años` : '-'}
                         </td>
 
                         {/* Pachangas */}

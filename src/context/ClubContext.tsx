@@ -173,6 +173,34 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
             batch.commit().catch(() => {});
           } catch {}
         }
+
+        // Clean out standard fake age (25 or 26) for players without birth date
+        const playersWithFakeAge = finalPlayersData.filter(
+          (p) => (!p.birthDate || !p.birthDate.trim()) && (p.age === 25 || p.age === 26)
+        );
+
+        if (playersWithFakeAge.length > 0) {
+          finalPlayersData = finalPlayersData.map((p) => {
+            if ((!p.birthDate || !p.birthDate.trim()) && (p.age === 25 || p.age === 26)) {
+              const { age, ...rest } = p;
+              return rest;
+            }
+            return p;
+          });
+
+          try {
+            const batch = writeBatch(db);
+            playersWithFakeAge.forEach((p) => {
+              const { age, ...cleaned } = p;
+              batch.set(doc(db, 'players', p.id), sanitizeForFirestore(cleaned));
+            });
+            batch.commit().catch(() => {});
+          } catch {}
+
+          try {
+            localStorage.setItem('felgar_friends_players_v2', JSON.stringify(finalPlayersData));
+          } catch {}
+        }
         
         setRawPlayers(finalPlayersData.length > 0 ? finalPlayersData : INITIAL_PLAYERS);
         initialLoadDone = true;
@@ -530,8 +558,12 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('Could not compress player photo', err);
       }
     }
+    const playerToSave = { ...newPlayer };
+    if ((!playerToSave.birthDate || !playerToSave.birthDate.trim()) && (playerToSave.age === 25 || playerToSave.age === 26)) {
+      delete playerToSave.age;
+    }
     try {
-      const sanitized = sanitizeForFirestore({ ...newPlayer, photoUrl: finalPhoto, id });
+      const sanitized = sanitizeForFirestore({ ...playerToSave, photoUrl: finalPhoto, id });
       await setDoc(doc(db, 'players', id), sanitized);
     } catch (e) {
       console.error('Failed to add player', e);
@@ -552,8 +584,12 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('Could not compress player photo', err);
       }
     }
+    const playerToSave = { ...player };
+    if ((!playerToSave.birthDate || !playerToSave.birthDate.trim()) && (playerToSave.age === 25 || playerToSave.age === 26)) {
+      delete playerToSave.age;
+    }
     try {
-      const sanitized = sanitizeForFirestore({ ...player, photoUrl: finalPhoto });
+      const sanitized = sanitizeForFirestore({ ...playerToSave, photoUrl: finalPhoto });
       await setDoc(doc(db, 'players', player.id), sanitized);
     } catch (e) {
       console.error('Failed to update player', e);
