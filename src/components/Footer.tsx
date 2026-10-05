@@ -1,10 +1,10 @@
 import React from 'react';
 import { Crest } from './Crest';
 import { useClub } from '../context/ClubContext';
-import { MapPin, Users, Heart, Calendar } from 'lucide-react';
+import { MapPin, Users, Heart, Calendar, LogOut } from 'lucide-react';
 
 export const Footer: React.FC = () => {
-  const { setActiveTab, stats } = useClub();
+  const { setActiveTab, stats, logoutSite } = useClub();
 
   const handleNavigate = (tab: 'inicio' | 'partidos' | 'jugadores' | 'galeria') => {
     setActiveTab(tab);
@@ -118,10 +118,17 @@ export const Footer: React.FC = () => {
       </div>
 
       {/* Bottom Legal bar */}
-      <div className="border-t border-slate-300 py-5 px-4 text-center text-slate-500">
+      <div className="border-t border-slate-300 py-5 px-4 text-center text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3 max-w-7xl mx-auto">
         <p className="flex items-center justify-center gap-1.5">
           © 2026 Felgar FC • Hecho con <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500 inline" /> para los jugadores.
         </p>
+        <button
+          onClick={logoutSite}
+          className="text-[11px] text-slate-400 hover:text-rose-600 transition-colors flex items-center gap-1.5 cursor-pointer"
+        >
+          <LogOut className="w-3 h-3" />
+          <span>Bloquear acceso / Cerrar sesión</span>
+        </button>
       </div>
     </footer>
   );

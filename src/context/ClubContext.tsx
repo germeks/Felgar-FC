@@ -19,6 +19,9 @@ interface ClubContextType {
   seasons: string[];
   photoCategories: string[];
   stats: PachangaStats;
+  isSiteAuthenticated: boolean;
+  loginSite: (password: string) => boolean;
+  logoutSite: () => void;
   isAdmin: boolean;
   loginAdmin: (password: string) => boolean;
   logoutAdmin: () => void;
@@ -73,7 +76,44 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return syncPlayersWithMatches(basePlayers, baseMatches);
   }, [rawPlayers, matches]);
 
-  // Admin permission state (protected with password "Chinocablon")
+  // Site gate access state (protected with password "FelgarMadrid")
+  const [isSiteAuthenticated, setIsSiteAuthenticated] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('felgar_fc_site_auth') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const loginSite = (password: string): boolean => {
+    const clean = password.trim();
+    if (
+      clean === 'FelgarMadrid' ||
+      clean.toLowerCase() === 'felgarmadrid' ||
+      clean === 'Chinocablon' ||
+      clean.toLowerCase() === 'chinocablon'
+    ) {
+      setIsSiteAuthenticated(true);
+      try {
+        localStorage.setItem('felgar_fc_site_auth', 'true');
+      } catch (e) {
+        console.warn('Could not persist site auth', e);
+      }
+      return true;
+    }
+    return false;
+  };
+
+  const logoutSite = () => {
+    setIsSiteAuthenticated(false);
+    try {
+      localStorage.removeItem('felgar_fc_site_auth');
+    } catch (e) {
+      console.warn('Could not remove site auth', e);
+    }
+  };
+
+  // Admin permission state (protected with password "FelgarMadrid" or "Chinocablon")
   const [isAdmin, setIsAdmin] = useState<boolean>(() => {
     try {
       return localStorage.getItem('felgar_fc_admin_auth') === 'true';
@@ -84,7 +124,12 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginAdmin = (password: string): boolean => {
     const clean = password.trim();
-    if (clean === 'Chinocablon' || clean.toLowerCase() === 'chinocablon') {
+    if (
+      clean === 'FelgarMadrid' ||
+      clean.toLowerCase() === 'felgarmadrid' ||
+      clean === 'Chinocablon' ||
+      clean.toLowerCase() === 'chinocablon'
+    ) {
       setIsAdmin(true);
       try {
         localStorage.setItem('felgar_fc_admin_auth', 'true');
@@ -881,6 +926,9 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
         seasons,
         photoCategories,
         stats,
+        isSiteAuthenticated,
+        loginSite,
+        logoutSite,
         isAdmin,
         loginAdmin,
         logoutAdmin,

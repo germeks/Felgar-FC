@@ -2,10 +2,10 @@ import React, { useState, useRef } from 'react';
 import { Crest } from './Crest';
 import { useClub } from '../context/ClubContext';
 import { AdminUnlockModal } from './AdminUnlockModal';
-import { Calendar, Users, Camera, Home, Menu, X, PlusCircle, RotateCcw, Flame, ShieldCheck, BarChart3, Newspaper } from 'lucide-react';
+import { Calendar, Users, Camera, Home, Menu, X, PlusCircle, RotateCcw, Flame, ShieldCheck, BarChart3, Newspaper, LogOut } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { activeTab, setActiveTab, stats, resetToDefaults, isAdmin, chronicles } = useClub();
+  const { activeTab, setActiveTab, stats, resetToDefaults, isAdmin, chronicles, logoutSite } = useClub();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -84,6 +84,14 @@ export const Navbar: React.FC = () => {
                 {confirmReset ? '¿Confirmar reinicio?' : 'Restaurar demo'}
               </button>
             )}
+            <button
+              onClick={logoutSite}
+              title="Cerrar sesión y bloquear acceso al club"
+              className="text-[11px] text-slate-500 hover:text-rose-600 transition-colors flex items-center gap-1 cursor-pointer ml-1 px-2 py-0.5 rounded-full hover:bg-slate-200/60"
+            >
+              <LogOut className="w-3 h-3" />
+              <span className="hidden sm:inline">Cerrar Sesión</span>
+            </button>
           </div>
         </div>
       </div>
@@ -226,6 +234,19 @@ export const Navbar: React.FC = () => {
               </button>
             );
           })}
+
+          <div className="pt-2 border-t border-slate-200/80">
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                logoutSite();
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Cerrar Sesión</span>
+            </button>
+          </div>
         </div>
       )}
 

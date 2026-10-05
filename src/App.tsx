@@ -4,6 +4,7 @@ import { Navbar } from './components/Navbar';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { HomeSection } from './components/HomeSection';
 import { Footer } from './components/Footer';
+import { LoginScreen } from './components/LoginScreen';
 
 // Code-splitting for heavy secondary sections to boost mobile initial load speed
 const MatchesSection = lazy(() =>
@@ -51,15 +52,28 @@ const MainContent: React.FC = () => {
   );
 };
 
+const MainApp: React.FC = () => {
+  const { isSiteAuthenticated } = useClub();
+
+  if (!isSiteAuthenticated) {
+    return <LoginScreen />;
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
+      <Navbar />
+      <MainContent />
+      <Footer />
+      <MobileBottomNav />
+    </div>
+  );
+};
+
 export default function App() {
   return (
     <ClubProvider>
-      <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
-        <Navbar />
-        <MainContent />
-        <Footer />
-        <MobileBottomNav />
-      </div>
+      <MainApp />
     </ClubProvider>
   );
 }
+
