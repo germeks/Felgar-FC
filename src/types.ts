@@ -16,7 +16,7 @@ export interface Player {
   wins?: number;
   losses?: number;
   draws?: number;
-  photoUrl: string;
+  photoUrl?: string;
   photoPosition?: string; // Posición de enfoque en miniaturas/tarjetas (ej. "50% 15%")
   photoZoom?: number; // Nivel de zoom de la foto (ej. 1.0 a 2.5)
   joinedDate: string;

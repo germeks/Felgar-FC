@@ -71,9 +71,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Synchronize player statistics (matchesPlayed, goals, mvps, assists) dynamically with pachangas
   const players: Player[] = React.useMemo(() => {
-    const basePlayers = rawPlayers.length > 0 ? rawPlayers : INITIAL_PLAYERS;
-    const baseMatches = matches.length > 0 ? matches : INITIAL_MATCHES;
-    return syncPlayersWithMatches(basePlayers, baseMatches);
+    return syncPlayersWithMatches(rawPlayers, matches);
   }, [rawPlayers, matches]);
 
   // Site gate access state (protected with password "FelgarMadrid")
@@ -159,95 +157,29 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
       async (snapshot) => {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Player));
         
-        // Auto-migrate from localStorage if Firestore is empty and local has data
-        if (!initialLoadDone && data.length === 0) {
-          try {
-            const localPlayers = localStorage.getItem('felgar_friends_players_v2');
-            if (localPlayers) {
-              const parsed = JSON.parse(localPlayers);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                console.log("Migrando jugadores de localStorage a Firebase...");
+        // Smart recovery: Check if the user has players in their browser's localStorage that are missing in Firestore
+        try {
+          const localPlayersRaw = localStorage.getItem('felgar_friends_players_v2');
+          if (localPlayersRaw) {
+            const localPlayers = JSON.parse(localPlayersRaw);
+            if (Array.isArray(localPlayers) && localPlayers.length > 0) {
+              const existingIds = new Set(data.map((p) => p.id));
+              const missingPlayers = localPlayers.filter((lp: Player) => lp && lp.id && !existingIds.has(lp.id));
+              if (missingPlayers.length > 0) {
+                console.log(`[Auto-Recovery] Recuperando ${missingPlayers.length} jugadores desde localStorage a Firebase...`);
                 const batch = writeBatch(db);
-                parsed.forEach((p: Player) => {
+                missingPlayers.forEach((p: Player) => {
                   batch.set(doc(db, 'players', p.id), sanitizeForFirestore(p));
                 });
-                await batch.commit();
-              } else if (INITIAL_PLAYERS.length > 0) {
-                const batch = writeBatch(db);
-                INITIAL_PLAYERS.forEach((p) => batch.set(doc(db, 'players', p.id), sanitizeForFirestore(p)));
-                await batch.commit();
+                batch.commit().catch((err) => console.error("Error guardando jugadores recuperados", err));
               }
-            } else if (INITIAL_PLAYERS.length > 0) {
-              const batch = writeBatch(db);
-              INITIAL_PLAYERS.forEach((p) => batch.set(doc(db, 'players', p.id), sanitizeForFirestore(p)));
-              await batch.commit();
             }
-          } catch(e) { console.error("Migration error", e); }
+          }
+        } catch (e) {
+          console.warn("Could not check local player recovery", e);
         }
 
-        const MOCK_DEMO_NICKNAMES = [
-          'El Muro', 'San Varela', 'El Capi', 'El Mariscal', 'El Galgo',
-          'La Brújula', 'Magia', 'El Todoterreno', 'El Rifle', 'El Zurdo',
-          'Gabi Gol', 'Pablito'
-        ];
-
-        // Clean out sample demo nicknames if they still exist in Firestore
-        const playersToClean = data.filter(
-          (p) => (p.nickname && MOCK_DEMO_NICKNAMES.includes(p.nickname)) || p.name.includes('"')
-        );
-
-        let finalPlayersData = data;
-        if (playersToClean.length > 0) {
-          finalPlayersData = data.map((p) => {
-            const cleanName = p.name.replace(/"[^"]*"\s*/g, '').replace(/\s+/g, ' ').trim();
-            const shouldRemoveNick = p.nickname && MOCK_DEMO_NICKNAMES.includes(p.nickname);
-            const { nickname, ...rest } = p;
-            return shouldRemoveNick ? { ...rest, name: cleanName } : { ...p, name: cleanName };
-          });
-
-          // Sync cleaned records to Firestore
-          try {
-            const batch = writeBatch(db);
-            playersToClean.forEach((p) => {
-              const cleanName = p.name.replace(/"[^"]*"\s*/g, '').replace(/\s+/g, ' ').trim();
-              const shouldRemoveNick = p.nickname && MOCK_DEMO_NICKNAMES.includes(p.nickname);
-              const { nickname, ...rest } = p;
-              const cleaned = shouldRemoveNick ? { ...rest, name: cleanName } : { ...p, name: cleanName };
-              batch.set(doc(db, 'players', p.id), sanitizeForFirestore(cleaned));
-            });
-            batch.commit().catch(() => {});
-          } catch {}
-        }
-
-        // Clean out standard fake age (25 or 26) for players without birth date
-        const playersWithFakeAge = finalPlayersData.filter(
-          (p) => (!p.birthDate || !p.birthDate.trim()) && (p.age === 25 || p.age === 26)
-        );
-
-        if (playersWithFakeAge.length > 0) {
-          finalPlayersData = finalPlayersData.map((p) => {
-            if ((!p.birthDate || !p.birthDate.trim()) && (p.age === 25 || p.age === 26)) {
-              const { age, ...rest } = p;
-              return rest;
-            }
-            return p;
-          });
-
-          try {
-            const batch = writeBatch(db);
-            playersWithFakeAge.forEach((p) => {
-              const { age, ...cleaned } = p;
-              batch.set(doc(db, 'players', p.id), sanitizeForFirestore(cleaned));
-            });
-            batch.commit().catch(() => {});
-          } catch {}
-
-          try {
-            localStorage.setItem('felgar_friends_players_v2', JSON.stringify(finalPlayersData));
-          } catch {}
-        }
-        
-        setRawPlayers(finalPlayersData.length > 0 ? finalPlayersData : INITIAL_PLAYERS);
+        setRawPlayers(data);
         initialLoadDone = true;
       },
       (error) => {
@@ -261,26 +193,26 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
       async (snapshot) => {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Match));
         
-        if (!matchesLoaded && data.length === 0) {
-          try {
-            const localMatches = localStorage.getItem('felgar_friends_matches_v2');
-            if (localMatches) {
-              const parsed = JSON.parse(localMatches);
-              if (Array.isArray(parsed) && parsed.length > 0) {
+        // Smart recovery: Check if the user has matches in their browser's localStorage that are missing in Firestore
+        try {
+          const localMatchesRaw = localStorage.getItem('felgar_friends_matches_v2');
+          if (localMatchesRaw) {
+            const localMatches = JSON.parse(localMatchesRaw);
+            if (Array.isArray(localMatches) && localMatches.length > 0) {
+              const existingIds = new Set(data.map((m) => m.id));
+              const missingMatches = localMatches.filter((lm: Match) => lm && lm.id && !existingIds.has(lm.id));
+              if (missingMatches.length > 0) {
+                console.log(`[Auto-Recovery] Recuperando ${missingMatches.length} partidos desde localStorage a Firebase...`);
                 const batch = writeBatch(db);
-                parsed.forEach((m: Match) => batch.set(doc(db, 'matches', m.id), sanitizeForFirestore(m)));
-                await batch.commit();
-              } else if (INITIAL_MATCHES.length > 0) {
-                const batch = writeBatch(db);
-                INITIAL_MATCHES.forEach((m) => batch.set(doc(db, 'matches', m.id), sanitizeForFirestore(m)));
-                await batch.commit();
+                missingMatches.forEach((m: Match) => {
+                  batch.set(doc(db, 'matches', m.id), sanitizeForFirestore(m));
+                });
+                batch.commit().catch((err) => console.error("Error guardando partidos recuperados", err));
               }
-            } else if (INITIAL_MATCHES.length > 0) {
-              const batch = writeBatch(db);
-              INITIAL_MATCHES.forEach((m) => batch.set(doc(db, 'matches', m.id), sanitizeForFirestore(m)));
-              await batch.commit();
             }
-          } catch(e) {}
+          }
+        } catch (e) {
+          console.warn("Could not check local matches recovery", e);
         }
 
         // Clean match titles containing "de los Lunes" if present in Firestore
@@ -309,7 +241,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         cleanedMatches.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setMatches(cleanedMatches.length > 0 ? cleanedMatches : INITIAL_MATCHES);
+        setMatches(cleanedMatches);
         matchesLoaded = true;
       },
       (error) => {
@@ -322,31 +254,8 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
       collection(db, 'photos'),
       async (snapshot) => {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PhotoItem));
-        
-        if (!photosLoaded && data.length === 0) {
-          try {
-            const localPhotos = localStorage.getItem('felgar_friends_photos_v2');
-            if (localPhotos) {
-              const parsed = JSON.parse(localPhotos);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                const batch = writeBatch(db);
-                parsed.forEach((p: PhotoItem) => batch.set(doc(db, 'photos', p.id), sanitizeForFirestore(p)));
-                await batch.commit();
-              } else if (INITIAL_PHOTOS.length > 0) {
-                const batch = writeBatch(db);
-                INITIAL_PHOTOS.forEach((p) => batch.set(doc(db, 'photos', p.id), sanitizeForFirestore(p)));
-                await batch.commit();
-              }
-            } else if (INITIAL_PHOTOS.length > 0) {
-              const batch = writeBatch(db);
-              INITIAL_PHOTOS.forEach((p) => batch.set(doc(db, 'photos', p.id), sanitizeForFirestore(p)));
-              await batch.commit();
-            }
-          } catch(e) {}
-        }
-
         data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setPhotos(data.length > 0 ? data : (photosLoaded ? [] : INITIAL_PHOTOS));
+        setPhotos(data);
         photosLoaded = true;
       },
       (error) => {
@@ -359,31 +268,8 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
       collection(db, 'chronicles'),
       async (snapshot) => {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chronicle));
-        
-        if (!chronLoaded && data.length === 0) {
-          try {
-            const localChron = localStorage.getItem('felgar_friends_chronicles_v2');
-            if (localChron) {
-              const parsed = JSON.parse(localChron);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                const batch = writeBatch(db);
-                parsed.forEach((c: Chronicle) => batch.set(doc(db, 'chronicles', c.id), sanitizeForFirestore(c)));
-                await batch.commit();
-              } else if (INITIAL_CHRONICLES.length > 0) {
-                const batch = writeBatch(db);
-                INITIAL_CHRONICLES.forEach((c) => batch.set(doc(db, 'chronicles', c.id), sanitizeForFirestore(c)));
-                await batch.commit();
-              }
-            } else if (INITIAL_CHRONICLES.length > 0) {
-              const batch = writeBatch(db);
-              INITIAL_CHRONICLES.forEach((c) => batch.set(doc(db, 'chronicles', c.id), sanitizeForFirestore(c)));
-              await batch.commit();
-            }
-          } catch(e) {}
-        }
-
         data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setChronicles(data.length > 0 ? data : (chronLoaded ? [] : INITIAL_CHRONICLES));
+        setChronicles(data);
         chronLoaded = true;
       },
       (error) => {
