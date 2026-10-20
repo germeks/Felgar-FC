@@ -157,7 +157,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
       async (snapshot) => {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Player));
         
-        // Smart recovery: Check if the user has players in their browser's localStorage that are missing in Firestore
+        // Smart recovery: Check if the user has players or photos in their browser's localStorage
         try {
           const localPlayersRaw = localStorage.getItem('felgar_friends_players_v2');
           if (localPlayersRaw) {
@@ -165,6 +165,8 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (Array.isArray(localPlayers) && localPlayers.length > 0) {
               const existingIds = new Set(data.map((p) => p.id));
               const missingPlayers = localPlayers.filter((lp: Player) => lp && lp.id && !existingIds.has(lp.id));
+              
+              // 1. Recover any completely missing players
               if (missingPlayers.length > 0) {
                 console.log(`[Auto-Recovery] Recuperando ${missingPlayers.length} jugadores desde localStorage a Firebase...`);
                 const batch = writeBatch(db);
@@ -172,6 +174,42 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   batch.set(doc(db, 'players', p.id), sanitizeForFirestore(p));
                 });
                 batch.commit().catch((err) => console.error("Error guardando jugadores recuperados", err));
+              }
+
+              // 2. Recover missing photos if local storage has a photo for a player lacking one
+              const photoUpdates: { id: string; photoUrl: string; photoPosition?: string; photoZoom?: number }[] = [];
+              data.forEach((p) => {
+                if (!p.photoUrl || !p.photoUrl.trim()) {
+                  const match = localPlayers.find(
+                    (lp: Player) =>
+                      lp &&
+                      lp.photoUrl &&
+                      lp.photoUrl.trim() &&
+                      (lp.id === p.id ||
+                        lp.name.trim().toLowerCase() === p.name.trim().toLowerCase() ||
+                        (p.name.includes('Jaime') && lp.name.includes('Jaime')))
+                  );
+                  if (match && match.photoUrl) {
+                    photoUpdates.push({
+                      id: p.id,
+                      photoUrl: match.photoUrl,
+                      photoPosition: match.photoPosition,
+                      photoZoom: match.photoZoom,
+                    });
+                  }
+                }
+              });
+
+              if (photoUpdates.length > 0) {
+                console.log(`[Auto-Recovery] Restaurando fotos locales para ${photoUpdates.length} jugadores en Firebase...`);
+                const batch = writeBatch(db);
+                photoUpdates.forEach((pu) => {
+                  const toUpdate: any = { photoUrl: pu.photoUrl };
+                  if (pu.photoPosition) toUpdate.photoPosition = pu.photoPosition;
+                  if (pu.photoZoom) toUpdate.photoZoom = pu.photoZoom;
+                  batch.update(doc(db, 'players', pu.id), toUpdate);
+                });
+                batch.commit().catch((err) => console.error("Error restaurando fotos a Firebase", err));
               }
             }
           }
