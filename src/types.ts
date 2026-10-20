@@ -93,3 +93,15 @@ export interface PachangaStats {
   goalsBlue: number;
   goalsWhite: number;
 }
+
+export interface BackupMeta {
+  id: string;
+  name: string;
+  createdAt: string;
+  summary: {
+    playersCount: number;
+    matchesCount: number;
+    chroniclesCount: number;
+    photosCount: number;
+  };
+}

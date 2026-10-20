@@ -1,16 +1,89 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Crest } from './Crest';
 import { useClub } from '../context/ClubContext';
 import { AdminUnlockModal } from './AdminUnlockModal';
-import { Calendar, Users, Camera, Home, Menu, X, PlusCircle, RotateCcw, Flame, ShieldCheck, BarChart3, Newspaper, LogOut } from 'lucide-react';
+import { BackupModal } from './BackupModal';
+import { 
+  Calendar, 
+  Users, 
+  Camera, 
+  Home, 
+  Menu, 
+  X, 
+  PlusCircle, 
+  RotateCcw, 
+  Flame, 
+  ShieldCheck, 
+  BarChart3, 
+  Newspaper, 
+  LogOut, 
+  Database,
+  ChevronDown,
+  Cloud,
+  Download,
+  Upload,
+  Check,
+  Loader2
+} from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { activeTab, setActiveTab, stats, resetToDefaults, isAdmin, chronicles, logoutSite } = useClub();
+  const { activeTab, setActiveTab, stats, isAdmin, chronicles, logoutSite, createBackup, exportBackupJson, players, matches } = useClub();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [confirmReset, setConfirmReset] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  const [showBackupPopup, setShowBackupPopup] = useState(false);
+  const [isQuickBackingUp, setIsQuickBackingUp] = useState(false);
+  const [backupQuickSuccess, setBackupQuickSuccess] = useState(false);
+  const backupPopupRef = useRef<HTMLDivElement>(null);
   const [secretClicks, setSecretClicks] = useState(0);
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (backupPopupRef.current && !backupPopupRef.current.contains(e.target as Node)) {
+        setShowBackupPopup(false);
+      }
+    };
+    if (showBackupPopup) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showBackupPopup]);
+
+  const handleQuickBackup = async () => {
+    setIsQuickBackingUp(true);
+    setBackupQuickSuccess(false);
+    try {
+      const res = await createBackup();
+      if (res.success) {
+        setBackupQuickSuccess(true);
+        setTimeout(() => setBackupQuickSuccess(false), 2500);
+      }
+    } finally {
+      setIsQuickBackingUp(false);
+    }
+  };
+
+  const handleQuickDownload = async () => {
+    try {
+      const data = await exportBackupJson();
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `felgar_fc_backup_${dateStr}.json`;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const handleSecretLogoClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -66,24 +139,81 @@ export const Navbar: React.FC = () => {
                 </button>
               </div>
             )}
-            {isAdmin && (
+            {/* Backup Pop-up Dropdown */}
+            <div className="relative" ref={backupPopupRef}>
               <button
-                onClick={() => {
-                  if (confirmReset) {
-                    resetToDefaults();
-                    setConfirmReset(false);
-                  } else {
-                    setConfirmReset(true);
-                    setTimeout(() => setConfirmReset(false), 3500);
-                  }
-                }}
-                title="Restaurar datos predeterminados"
-                className="text-[11px] text-slate-400 hover:text-amber-300 transition-colors flex items-center gap-1 cursor-pointer"
+                onClick={() => setShowBackupPopup(!showBackupPopup)}
+                title="Copias de seguridad"
+                className="text-[11px] font-bold bg-white text-slate-700 hover:text-blue-700 hover:bg-blue-50/70 border border-slate-300/80 px-2.5 py-0.5 rounded-full transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
               >
-                <RotateCcw className="w-3 h-3" />
-                {confirmReset ? '¿Confirmar reinicio?' : 'Restaurar demo'}
+                <Database className="w-3.5 h-3.5 text-blue-600" />
+                <span>Backup</span>
+                <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${showBackupPopup ? 'rotate-180' : ''}`} />
               </button>
-            )}
+
+              {showBackupPopup && (
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200/90 p-3 z-50 text-slate-900 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+                    <div className="flex items-center gap-1.5">
+                      <div className="p-1 rounded-md bg-blue-50 text-blue-600">
+                        <Database className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-900">Copias de Seguridad</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      {players.length} jug. • {matches.length} part.
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <button
+                      onClick={handleQuickBackup}
+                      disabled={isQuickBackingUp}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2">
+                        {isQuickBackingUp ? (
+                          <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                        ) : backupQuickSuccess ? (
+                          <Check className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <Cloud className="w-4 h-4 text-blue-600 group-hover:scale-110 transition-transform" />
+                        )}
+                        <span className={backupQuickSuccess ? 'text-emerald-700 font-bold' : ''}>
+                          {isQuickBackingUp ? 'Guardando copia...' : backupQuickSuccess ? '¡Copia Guardada!' : 'Crear copia en la Nube'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 group-hover:text-blue-600 font-bold">1-clic</span>
+                    </button>
+
+                    <button
+                      onClick={handleQuickDownload}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Download className="w-4 h-4 text-amber-600 group-hover:scale-110 transition-transform" />
+                        <span>Descargar copia JSON</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 group-hover:text-blue-600 font-bold">Descarga</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowBackupPopup(false);
+                        setShowBackupModal(true);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer group border-t border-slate-100 mt-1 pt-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Upload className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
+                        <span>Restaurar copia...</span>
+                      </div>
+                      <span className="text-[10px] text-blue-600 font-bold">Abrir &rarr;</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             <button
               onClick={logoutSite}
               title="Cerrar sesión y bloquear acceso al club"
@@ -235,7 +365,21 @@ export const Navbar: React.FC = () => {
             );
           })}
 
-          <div className="pt-2 border-t border-slate-200/80">
+          <div className="pt-2 border-t border-slate-200/80 space-y-1">
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                if (isAdmin) {
+                  setShowBackupModal(true);
+                } else {
+                  setShowAdminModal(true);
+                }
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
+            >
+              <Database className="w-4 h-4 text-blue-600" />
+              <span>Copia de Seguridad</span>
+            </button>
             <button
               onClick={() => {
                 setMobileMenuOpen(false);
@@ -254,6 +398,12 @@ export const Navbar: React.FC = () => {
       <AdminUnlockModal
         isOpen={showAdminModal}
         onClose={() => setShowAdminModal(false)}
+      />
+
+      {/* Backup and Restore Modal */}
+      <BackupModal
+        isOpen={showBackupModal}
+        onClose={() => setShowBackupModal(false)}
       />
     </header>
   );

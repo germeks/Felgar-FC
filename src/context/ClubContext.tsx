@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Player, Match, PhotoItem, PachangaStats, Chronicle } from '../types';
+import { Player, Match, PhotoItem, PachangaStats, Chronicle, BackupMeta } from '../types';
 import { INITIAL_PLAYERS, INITIAL_MATCHES, INITIAL_PHOTOS, INITIAL_SEASONS, INITIAL_CHRONICLES, DEFAULT_PHOTO_CATEGORIES } from '../data/initialData';
 import { db, sanitizeForFirestore, handleFirestoreError, OperationType } from '../firebase';
-import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs } from 'firebase/firestore';
 import { calculatePlayerStatsFromMatches, syncPlayersWithMatches } from '../utils/statsUtils';
 import { compressImage } from '../utils/imageCompression';
 
@@ -45,6 +45,11 @@ interface ClubContextType {
   updateChronicle: (chronicle: Chronicle) => void;
   deleteChronicle: (id: string) => void;
   resetToDefaults: () => void;
+  createBackup: (name?: string) => Promise<{ id: string; success: boolean }>;
+  getBackups: () => Promise<BackupMeta[]>;
+  restoreBackup: (backupId: string) => Promise<boolean>;
+  restoreFromJson: (jsonData: any) => Promise<boolean>;
+  exportBackupJson: () => Promise<any>;
 }
 
 const ClubContext = createContext<ClubContextType | undefined>(undefined);
@@ -835,6 +840,211 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     alert("El reseteo a datos de prueba está deshabilitado en la versión en la nube para no perder datos reales.");
   };
 
+  const createBackup = async (name?: string): Promise<{ id: string; success: boolean }> => {
+    const backupId = 'backup_' + Date.now();
+    const backupName = name?.trim() || `Copia de seguridad - ${new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+    const timestamp = new Date().toISOString();
+
+    const summary = {
+      playersCount: rawPlayers.length,
+      matchesCount: matches.length,
+      chroniclesCount: chronicles.length,
+      photosCount: photos.length,
+    };
+
+    const backupMeta: BackupMeta = {
+      id: backupId,
+      name: backupName,
+      createdAt: timestamp,
+      summary,
+    };
+
+    try {
+      // 1. Save metadata document in Firestore under 'backups'
+      await setDoc(doc(db, 'backups', backupId), sanitizeForFirestore(backupMeta));
+      await setDoc(doc(db, 'backups', 'latest_meta'), sanitizeForFirestore(backupMeta));
+
+      // 2. Save items in subcollections to avoid the 1MB document limit
+      for (const p of rawPlayers) {
+        await setDoc(doc(db, 'backups', backupId, 'players', p.id), sanitizeForFirestore(p));
+      }
+      for (const m of matches) {
+        await setDoc(doc(db, 'backups', backupId, 'matches', m.id), sanitizeForFirestore(m));
+      }
+      for (const ph of photos) {
+        await setDoc(doc(db, 'backups', backupId, 'photos', ph.id), sanitizeForFirestore(ph));
+      }
+      for (const c of chronicles) {
+        await setDoc(doc(db, 'backups', backupId, 'chronicles', c.id), sanitizeForFirestore(c));
+      }
+      for (const s of seasons) {
+        await setDoc(doc(db, 'backups', backupId, 'seasons', s), { name: s });
+      }
+
+      // Also persist backup in localStorage for quick offline recovery if needed
+      try {
+        const localBackupsRaw = localStorage.getItem('felgar_backups_list');
+        const list: BackupMeta[] = localBackupsRaw ? JSON.parse(localBackupsRaw) : [];
+        list.unshift(backupMeta);
+        localStorage.setItem('felgar_backups_list', JSON.stringify(list.slice(0, 15)));
+      } catch (err) {}
+
+      return { id: backupId, success: true };
+    } catch (e) {
+      console.error('Failed to create backup', e);
+      handleFirestoreError(e, OperationType.CREATE, `backups/${backupId}`);
+      return { id: backupId, success: false };
+    }
+  };
+
+  const getBackups = async (): Promise<BackupMeta[]> => {
+    try {
+      const snap = await getDocs(collection(db, 'backups'));
+      const metas = snap.docs
+        .filter((d) => d.id !== 'latest_meta')
+        .map((d) => d.data() as BackupMeta)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return metas;
+    } catch (e) {
+      console.warn('Could not fetch backups from Firestore, checking local storage', e);
+      try {
+        const local = localStorage.getItem('felgar_backups_list');
+        if (local) return JSON.parse(local);
+      } catch {}
+      return [];
+    }
+  };
+
+  const restoreFromParsedData = async (data: {
+    players?: Player[];
+    matches?: Match[];
+    photos?: PhotoItem[];
+    chronicles?: Chronicle[];
+    seasons?: string[];
+  }): Promise<boolean> => {
+    try {
+      // Restore Players
+      if (data.players && Array.isArray(data.players) && data.players.length > 0) {
+        const curPlayersSnap = await getDocs(collection(db, 'players'));
+        for (const docSnap of curPlayersSnap.docs) {
+          await deleteDoc(doc(db, 'players', docSnap.id));
+        }
+        for (const p of data.players) {
+          await setDoc(doc(db, 'players', p.id), sanitizeForFirestore(p));
+        }
+        setRawPlayers(data.players);
+      }
+
+      // Restore Matches
+      if (data.matches && Array.isArray(data.matches)) {
+        const curMatchesSnap = await getDocs(collection(db, 'matches'));
+        for (const docSnap of curMatchesSnap.docs) {
+          await deleteDoc(doc(db, 'matches', docSnap.id));
+        }
+        for (const m of data.matches) {
+          await setDoc(doc(db, 'matches', m.id), sanitizeForFirestore(m));
+        }
+        setMatches(data.matches);
+      }
+
+      // Restore Photos
+      if (data.photos && Array.isArray(data.photos)) {
+        const curPhotosSnap = await getDocs(collection(db, 'photos'));
+        for (const docSnap of curPhotosSnap.docs) {
+          await deleteDoc(doc(db, 'photos', docSnap.id));
+        }
+        for (const ph of data.photos) {
+          await setDoc(doc(db, 'photos', ph.id), sanitizeForFirestore(ph));
+        }
+        setPhotos(data.photos);
+      }
+
+      // Restore Chronicles
+      if (data.chronicles && Array.isArray(data.chronicles)) {
+        const curChronSnap = await getDocs(collection(db, 'chronicles'));
+        for (const docSnap of curChronSnap.docs) {
+          await deleteDoc(doc(db, 'chronicles', docSnap.id));
+        }
+        for (const c of data.chronicles) {
+          await setDoc(doc(db, 'chronicles', c.id), sanitizeForFirestore(c));
+        }
+        setChronicles(data.chronicles);
+      }
+
+      // Restore Seasons
+      if (data.seasons && Array.isArray(data.seasons) && data.seasons.length > 0) {
+        const curSeasonsSnap = await getDocs(collection(db, 'seasons'));
+        for (const docSnap of curSeasonsSnap.docs) {
+          await deleteDoc(doc(db, 'seasons', docSnap.id));
+        }
+        for (const s of data.seasons) {
+          await setDoc(doc(db, 'seasons', s), { name: s });
+        }
+        setSeasons(data.seasons);
+      }
+
+      return true;
+    } catch (e) {
+      console.error('Failed to restore from parsed data', e);
+      return false;
+    }
+  };
+
+  const restoreBackup = async (backupId: string): Promise<boolean> => {
+    try {
+      const playersSnap = await getDocs(collection(db, 'backups', backupId, 'players'));
+      const matchesSnap = await getDocs(collection(db, 'backups', backupId, 'matches'));
+      const photosSnap = await getDocs(collection(db, 'backups', backupId, 'photos'));
+      const chroniclesSnap = await getDocs(collection(db, 'backups', backupId, 'chronicles'));
+      const seasonsSnap = await getDocs(collection(db, 'backups', backupId, 'seasons'));
+
+      const bPlayers = playersSnap.docs.map((d) => d.data() as Player);
+      const bMatches = matchesSnap.docs.map((d) => d.data() as Match);
+      const bPhotos = photosSnap.docs.map((d) => d.data() as PhotoItem);
+      const bChronicles = chroniclesSnap.docs.map((d) => d.data() as Chronicle);
+      const bSeasons = seasonsSnap.docs.map((d) => d.data().name as string);
+
+      return await restoreFromParsedData({
+        players: bPlayers,
+        matches: bMatches,
+        photos: bPhotos,
+        chronicles: bChronicles,
+        seasons: bSeasons,
+      });
+    } catch (e) {
+      console.error('Failed to restore backup from Firestore', e);
+      handleFirestoreError(e, OperationType.GET, `backups/${backupId}`);
+      return false;
+    }
+  };
+
+  const exportBackupJson = async (): Promise<any> => {
+    return {
+      version: '2.0',
+      exportedAt: new Date().toISOString(),
+      club: 'Felgar FC',
+      summary: {
+        playersCount: rawPlayers.length,
+        matchesCount: matches.length,
+        chroniclesCount: chronicles.length,
+        photosCount: photos.length,
+      },
+      data: {
+        players: rawPlayers,
+        matches,
+        photos,
+        chronicles,
+        seasons,
+        photoCategories,
+      },
+    };
+  };
+
+  const restoreFromJson = async (jsonData: any): Promise<boolean> => {
+    const payload = jsonData?.data ? jsonData.data : jsonData;
+    return await restoreFromParsedData(payload);
+  };
+
   return (
     <ClubContext.Provider
       value={{
@@ -876,6 +1086,11 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateChronicle,
         deleteChronicle,
         resetToDefaults,
+        createBackup,
+        getBackups,
+        restoreBackup,
+        restoreFromJson,
+        exportBackupJson,
       }}
     >
       {children}
